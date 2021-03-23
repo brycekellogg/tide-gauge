@@ -11,9 +11,9 @@ SerialLogHandler logHandler;
 
 // Config params
 // Periods are in milliseconds
-unsigned int sensorPollingPeriod = 1000;
-unsigned int cloudUpdatePeriod = 10000;
-unsigned int numSamplesPerPoll = 5;
+unsigned int sensorPollingPeriod = 20000;
+unsigned int cloudUpdatePeriod = 5000;
+unsigned int numSamplesPerPoll = 20;
 unsigned int deviceInfoUpdatePeriod = 60000;
 
 
@@ -39,11 +39,12 @@ struct SensorRecord {
     uint16_t data;
 };
 
-#define MAX_RECORDS 10
-std::queue<SensorRecord> recordQueue;
+#define MAX_RECORDS 100
+std::queue<SensorRecord> globalRecordQueue;
 
 
-// 
+//
+//
 #define MAX_BYTES_PER_RECORD sizeof(R"({"time": 4294967295, "data": 999},)")
 
 
@@ -55,6 +56,7 @@ std::queue<SensorRecord> recordQueue;
 
 
 // TODO: can only do a publish per second max
+#define MAX_PUBLISH_INTERVAL 2
 
 /**
  * A Particle Function for setting device config parameters.
@@ -109,7 +111,7 @@ int functionConfig(String params) {
 }
 
 
-void sensorPolling() {
+void sensorPolling(std::queue<SensorRecord>& recordQueue) {
     for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
         SensorRecord record;
 
@@ -129,30 +131,42 @@ void sensorPolling() {
 /**
  * Publish sensor data to the cloud.
  *
- * 
+ * This function pops sensor records off the queue,
+ * compiles them into a JSON string, and publishes
+ * them to the cloud. If the maximum size of data
+ * that can be published is not large enough to empty
+ * the queue, the function will schedule another run
+ * via the `doCloudUpdate` flag. Will only publish at
+ * a max rate defined by `MAX_PUBLISH_INTERVAL`.
  **/
-void cloudUpdate() {
+void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 
+    static time_t lastPublish = 0;
     static char buff[MAX_PUBLISH_SIZE];
+
     int numRecords = 0;
     int numBytes = 0;
+    time_t now = Time.now();
 
-
+    // Begin saving as JSON array of JSON objects
     JSONBufferWriter json(buff, sizeof(buff)-1);
-
     json.beginArray();
+
+    // Save all the data in the queue unless
+    // we run out of space in the buffer,
+    // or we are publishing too fast.
     while (!recordQueue.empty() &&
-           json.bufferSize() > numBytes+MAX_BYTES_PER_RECORD+sizeof("]")) {
+           json.bufferSize() > numBytes+MAX_BYTES_PER_RECORD+sizeof("]") &&
+           now > lastPublish+MAX_PUBLISH_INTERVAL) {
 
         // Get data record from queue
         auto record = recordQueue.front();
         recordQueue.pop();
 
-        // TODO: time needs to be at least unsigned 32 bits
-        //       JSONBufferWriter doesn't support unsigned long.
-        //       String does? Maybe try converting to a string first?
-
         // Convert data record to JSON
+        // We convert time to a String first
+        // to get around type size limitations
+        // of the JSON writer library.
         json.beginObject();
         json.name("time").value(String(record.time));
         json.name("data").value(record.data);
@@ -161,8 +175,6 @@ void cloudUpdate() {
         // Save info about JSON progress
         numBytes = json.dataSize();
         numRecords++;
-
-        Log.info("json: %d records, %d bytes", numRecords, numBytes);
     }
 
     // Terminate the JSON string
@@ -172,8 +184,9 @@ void cloudUpdate() {
 
     // Publish data (if any) to cloud
     if (numRecords > 0) {
-        Log.info("Publishing: %d records, %d bytes", numRecords, numBytes);
-        //Particle.publish("/tide-data/", buff);
+        Log.info("Publishing: %d records for %d bytes", numRecords, numBytes);
+        Particle.publish("/tide-data/", buff);
+        lastPublish = Time.now();
     }
 
     // Try again if records still waiting
@@ -215,12 +228,12 @@ void loop() {
 
     if (doSensorPoll) {
         doSensorPoll = false;
-        sensorPolling();
+        sensorPolling(globalRecordQueue);
     }
 
     if (doCloudUpdate) {
         doCloudUpdate = false;
-        cloudUpdate();
+        cloudUpdate(globalRecordQueue);
     }
 
     if (doDeviceInfoUpdate) {
