@@ -1,0 +1,106 @@
+Parameters:
+  LambdaSource:
+    Type: String
+
+Resources:
+  Database:
+    Type: AWS::Timestream::Database
+    Properties: {DatabaseName: MudFlatsTideData}
+
+  DatabaseTable:
+    Type: AWS::Timestream::Table
+    Properties:
+      DatabaseName: !Ref Database
+      TableName: WaterLevel
+
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [lambda.amazonaws.com]
+          Action: [sts:AssumeRole]
+      Path: "/"
+      Policies:
+      - PolicyName: LambdaFunctionPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: '*'
+
+  ConfigLambdaPermission:
+    Type: "AWS::Lambda::Permission"
+    DependsOn:
+    - RestAPI
+    - LambdaFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunction
+      Principal: apigateway.amazonaws.com
+
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      Handler: lambda.post
+      Role: !GetAtt LambdaFunctionRole.Arn
+      Code:
+        S3Bucket: "tide-project"
+        S3Key: !Ref LambdaSource
+
+
+  RestAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: TideAPI
+
+  # This represents the URL at /tide-data for publishing
+  # and querying water level data from the database
+  ResourceTideData:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: tide-data
+      RestApiId: !Ref RestAPI
+
+  # This represents the URL at /device-data for setting
+  # and querying device state from the database
+  ResourceDeviceData:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: device-data
+      RestApiId: !Ref RestAPI
+
+
+  # An HTTP POST method for publishing data to
+  # the database. Expects data of the form:
+  #   {
+  #     "data": [
+  #       {"time": <int>, "data": <int>},
+  #       {"time": <int>, "data": <int>}
+  #     ]
+  #   }
+  MethodPostTideData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceTideData
+      RestApiId: !Ref RestAPI
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
