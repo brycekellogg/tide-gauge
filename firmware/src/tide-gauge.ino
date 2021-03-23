@@ -58,6 +58,7 @@ std::queue<SensorRecord> globalRecordQueue;
 // TODO: can only do a publish per second max
 #define MAX_PUBLISH_INTERVAL 2
 
+
 /**
  * A Particle Function for setting device config parameters.
  *
@@ -77,34 +78,42 @@ std::queue<SensorRecord> globalRecordQueue;
  * >>> particle function call tide-gauge-1 config <jsonData>
  **/
 int functionConfig(String params) {
-    Log.info("Config function called");
     JSONObjectIterator iter(JSONValue::parseCopy(params));
     while(iter.next()) {
         JSONString paramName = iter.name();
-        int paramValue = iter.value().toInt();
+        JSONValue  paramValue = iter.value();
 
-        Log.info("Config (%s, %d)", (const char*) paramName, paramValue);
+        Log.info("Config (%s, %s)", (const char*) paramName, (const char*) paramValue.toString());
 
         if (paramName == "sensorPollingPeriod") {
-            // TODO: null handling
-            sensorPollingPeriod = paramValue;
-            sensorPollingTimer.changePeriod(sensorPollingPeriod);
+            if (paramValue.isNumber()) {
+                sensorPollingPeriod = paramValue.toInt();
+                sensorPollingTimer.changePeriod(sensorPollingPeriod);
+            } else if (paramValue.isNull()) {
+                sensorPollingTimer.stop();
+            }
         }
 
         if (paramName == "cloudUpdatePeriod") {
-            // TODO: null handling
-            cloudUpdatePeriod = paramValue;
-            cloudUpdateTimer.changePeriod(cloudUpdatePeriod);
+            if (paramValue.isNumber()) {
+                cloudUpdatePeriod = paramValue.toInt();
+                cloudUpdateTimer.changePeriod(cloudUpdatePeriod);
+            } else if (paramValue.isNull()) {
+                cloudUpdateTimer.stop();
+            }
         }
 
-        if (paramName == "numSamplesPerPoll") {
-            numSamplesPerPoll = paramValue;
+        if (paramName == "numSamplesPerPoll" && paramValue.isNumber()) {
+            numSamplesPerPoll = paramValue.toInt();
         }
 
         if (paramName == "deviceInfoUpdatePeriod") {
-            // TODO: null handling
-            deviceInfoUpdatePeriod = paramValue;
-            deviceInfoUpdateTimer.changePeriod(deviceInfoUpdatePeriod);
+            if (paramValue.isNumber()) {
+                deviceInfoUpdatePeriod = paramValue.toInt();
+                deviceInfoUpdateTimer.changePeriod(deviceInfoUpdatePeriod);
+            } else if (paramValue.isNull()) {
+                deviceInfoUpdateTimer.stop();
+            }
         }
     }
     return 0;
