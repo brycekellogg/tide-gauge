@@ -34,17 +34,32 @@ void onSensorPollingTimer() { doSensorPoll = true; }
 void onCloudUpdateTimer() { doCloudUpdate = true; }
 void onDeviceInfoUpdateTimer() { doDeviceInfoUpdate = true; }
 
+
+// A structure for saving sensor records. This
+// is used to pass data into and out of the queue,
+// and therefore between between the sensing
+// function and the cloud update function.
 struct SensorRecord {
     uint32_t time;
     uint16_t data;
 };
 
+
+// Because the queue used to pass sensor records
+// allocates new records on the heap as they are
+// passed in, we set a limit on the number of
+// records the queue can hold. It will never get
+// above this size. If the queue is full, new
+// sensor records will be dropped.
 #define MAX_RECORDS 100
-std::queue<SensorRecord> globalRecordQueue;
 
 
-//
-//
+// The maximum size of one of our sensor records as a JSON object.
+// The size is determined by the JSON format, the object keys, and
+// the maximum length of the values. For time value, we currently
+// only support 32-bit unsigned ints, giving a maximum of 10 digits.
+// For sensor values, the data is in cm and we will not get values
+// from the sensor above 10 m (1000 cm), giving a max of 3 digits.
 #define MAX_BYTES_PER_RECORD sizeof(R"({"time": 4294967295, "data": 999},)")
 
 
@@ -135,7 +150,10 @@ int functionConfig(String params) {
 }
 
 
-void sensorPolling(std::queue<SensorRecord>& recordQueue) {
+/**
+ *
+ **/
+bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
     for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
         SensorRecord record;
 
@@ -149,6 +167,7 @@ void sensorPolling(std::queue<SensorRecord>& recordQueue) {
             Log.warn("Record queue full. Max size = %d", MAX_RECORDS);
         }
     }
+    return false;
 }
 
 
@@ -162,8 +181,9 @@ void sensorPolling(std::queue<SensorRecord>& recordQueue) {
  * the queue, the function will schedule another run
  * via the `doCloudUpdate` flag. Will only publish at
  * a max rate defined by `MIN_UPDATE_PERIOD`.
+ * Returns a boolean indicating if another update is needed.
  **/
-void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
+bool cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 
     static time_t lastPublish = 0;
     static char buff[MAX_PUBLISH_SIZE];
@@ -214,9 +234,7 @@ void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
     }
 
     // Try again if records still waiting
-    if (!recordQueue.empty()) {
-        doCloudUpdate = true;
-    }
+    return !recordQueue.empty();
 }
 
 
@@ -236,8 +254,11 @@ void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
  *        "deviceInfoUpdatePeriod": <int>,
  *        "batteryPercent": <float>,
  *        "queueSize": <int>}'
+ *
+ * Returns a boolean indicating if another update
+ * is needed. Currently never needed; always false.
  **/
-void deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
+bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
 
     static char buff[MAX_PUBLISH_SIZE];
 
@@ -266,9 +287,17 @@ void deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
     Log.info("batteryPercent = %.2f", batteryPercent);
     Log.info("queueSize = %d", queueSize);
     Particle.publish("/device-data/", buff);
+
+    return false;
 }
 
 
+/**
+ * Setup function that gets called once at start up. We
+ * are guaranteed to have cloud connectivity when this
+ * function is run. Registers config function and starts
+ * all the timers with default timeout values.
+ **/
 void setup() {
     // Register the config function
     Particle.function("config", functionConfig);
@@ -280,20 +309,14 @@ void setup() {
 }
 
 
+/**
+ * Simple main loop that repeated executes to run our
+ * application code. All it does is check global flags
+ * (set by timers) and call the corresponding functions.
+ **/
 void loop() {
-
-    if (doSensorPoll) {
-        doSensorPoll = false;
-        sensorPolling(globalRecordQueue);
-    }
-
-    if (doCloudUpdate) {
-        doCloudUpdate = false;
-        cloudUpdate(globalRecordQueue);
-    }
-
-    if (doDeviceInfoUpdate) {
-        doDeviceInfoUpdate = false;
-        deviceInfoUpdate(globalRecordQueue);
-    }
+    static std::queue<SensorRecord> recordQueue;
+    if (doSensorPoll) doSensorPoll = sensorPolling(recordQueue);
+    if (doCloudUpdate) doCloudUpdate = cloudUpdate(recordQueue);
+    if (doDeviceInfoUpdate) doDeviceInfoUpdate = deviceInfoUpdate(recordQueue);
 }
