@@ -286,6 +286,9 @@ bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
     json.name("queueSize").value(queueSize);
     json.endObject();
 
+    // Terminate the JSON string
+    json.buffer()[json.dataSize()] = '\0';
+
     // Publish data to cloud & log
     Log.info("sensorPollingPeriod = %d", sensorPollingPeriod);
     Log.info("cloudUpdatePeriod = %d", cloudUpdatePeriod);
