@@ -55,8 +55,15 @@ std::queue<SensorRecord> globalRecordQueue;
 #define MAX_PUBLISH_SIZE 622
 
 
-// TODO: can only do a publish per second max
-#define MAX_PUBLISH_INTERVAL 2
+// The Particle cloud has a limit of 1 publish per second. In
+// perder to not get throttled by publishing too fast, we set
+// a limit on the timer period for cloud update timers. Any calls
+// to the config function with a cloud update timer period smaller
+// than this value (in milliseconds) will be replaced by this value.
+#define MIN_UPDATE_PERIOD 2000
+
+
+// TODO: sync time every day or so
 
 
 /**
@@ -97,6 +104,10 @@ int functionConfig(String params) {
         if (paramName == "cloudUpdatePeriod") {
             if (paramValue.isNumber()) {
                 cloudUpdatePeriod = paramValue.toInt();
+
+                // We don't want to update faster than a certain limit
+                if (cloudUpdatePeriod < MIN_UPDATE_PERIOD) cloudUpdatePeriod = MIN_UPDATE_PERIOD;
+
                 cloudUpdateTimer.changePeriod(cloudUpdatePeriod);
             } else if (paramValue.isNull()) {
                 cloudUpdateTimer.stop();
@@ -110,6 +121,10 @@ int functionConfig(String params) {
         if (paramName == "deviceInfoUpdatePeriod") {
             if (paramValue.isNumber()) {
                 deviceInfoUpdatePeriod = paramValue.toInt();
+
+                // We don't want to update faster than a certain limit
+                if (deviceInfoUpdatePeriod < MIN_UPDATE_PERIOD) deviceInfoUpdatePeriod = MIN_UPDATE_PERIOD;
+
                 deviceInfoUpdateTimer.changePeriod(deviceInfoUpdatePeriod);
             } else if (paramValue.isNull()) {
                 deviceInfoUpdateTimer.stop();
@@ -146,7 +161,7 @@ void sensorPolling(std::queue<SensorRecord>& recordQueue) {
  * that can be published is not large enough to empty
  * the queue, the function will schedule another run
  * via the `doCloudUpdate` flag. Will only publish at
- * a max rate defined by `MAX_PUBLISH_INTERVAL`.
+ * a max rate defined by `MIN_UPDATE_PERIOD`.
  **/
 void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 
@@ -166,7 +181,7 @@ void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
     // or we are publishing too fast.
     while (!recordQueue.empty() &&
            json.bufferSize() > numBytes+MAX_BYTES_PER_RECORD+sizeof("]") &&
-           now > lastPublish+MAX_PUBLISH_INTERVAL) {
+           now > lastPublish+(MIN_UPDATE_PERIOD/1000)) {
 
         // Get data record from queue
         auto record = recordQueue.front();
