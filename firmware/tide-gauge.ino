@@ -277,11 +277,6 @@ void setup() {
     sensorPollingTimer.start();
     cloudUpdateTimer.start();
     deviceInfoUpdateTimer.start();
-
-    Log.info("int -> %d", sizeof(int));
-    Log.info("long -> %d", sizeof(long));
-    Log.info("uint64_t -> %d", sizeof(uint64_t));
-    Log.info("time -> %d", sizeof(time_t));
 }
 
 
