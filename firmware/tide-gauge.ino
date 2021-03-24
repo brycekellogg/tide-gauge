@@ -205,14 +205,52 @@ void cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 }
 
 
-void deviceInfoUpdate() {
-    // Info to update:
-    //    - battery percent
-    //    - queue size
-    //    - heap free
-    //    - config params current values
-    //    - USB voltage (via ADC) (can tell us about solar panel performance)
+/**
+ * Publish device info to the cloud.
+ *
+ * This function gathers various info about the
+ * device and publishes it to the cloud as a JSON
+ * object. Each key describes the device property
+ * name with the value representing the property
+ * value at the time this function is called.
+ *
+ *      '{"time": <int>,
+ *        "sensorPollingPeriod": <int>,
+ *        "cloudUpdatePeriod": <int>,
+ *        "numSamplesPerPoll": <int>,
+ *        "deviceInfoUpdatePeriod": <int>,
+ *        "batteryPercent": <float>,
+ *        "queueSize": <int>}'
+ **/
+void deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
 
+    static char buff[MAX_PUBLISH_SIZE];
+
+    // Get values that need measuring
+    float batteryPercent = System.batteryCharge();
+    int queueSize = recordQueue.size();
+    size_t timestamp = Time.now();
+
+    // Saving as JSON object
+    JSONBufferWriter json(buff, sizeof(buff)-1);
+    json.beginObject();
+    json.name("time").value(String(timestamp));
+    json.name("sensorPollingPeriod").value(sensorPollingPeriod);
+    json.name("cloudUpdatePeriod").value(cloudUpdatePeriod);
+    json.name("numSamplesPerPoll").value(numSamplesPerPoll);
+    json.name("deviceInfoUpdatePeriod").value(deviceInfoUpdatePeriod);
+    json.name("batteryPercent").value(batteryPercent);
+    json.name("queueSize").value(queueSize);
+    json.endObject();
+
+    // Publish data to cloud & log
+    Log.info("sensorPollingPeriod = %d", sensorPollingPeriod);
+    Log.info("cloudUpdatePeriod = %d", cloudUpdatePeriod);
+    Log.info("numSamplesPerPoll = %d", numSamplesPerPoll);
+    Log.info("deviceInfoUpdatePeriod = %d", deviceInfoUpdatePeriod);
+    Log.info("batteryPercent = %.2f", batteryPercent);
+    Log.info("queueSize = %d", queueSize);
+    Particle.publish("/device-data/", buff);
 }
 
 
@@ -223,7 +261,7 @@ void setup() {
     // Start timers
     sensorPollingTimer.start();
     cloudUpdateTimer.start();
-    /*deviceInfoUpdateTimer.start();*/
+    deviceInfoUpdateTimer.start();
 
     Log.info("int -> %d", sizeof(int));
     Log.info("long -> %d", sizeof(long));
@@ -233,7 +271,6 @@ void setup() {
 
 
 void loop() {
-    /*Particle.publish("TestEvent", "{level: 9000}");*/
 
     if (doSensorPoll) {
         doSensorPoll = false;
@@ -247,6 +284,6 @@ void loop() {
 
     if (doDeviceInfoUpdate) {
         doDeviceInfoUpdate = false;
-        Log.info("DEVICE INFO");
+        deviceInfoUpdate(globalRecordQueue);
     }
 }
