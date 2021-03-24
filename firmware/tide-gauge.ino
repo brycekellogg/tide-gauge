@@ -1,48 +1,16 @@
-/*
- * Project tide-gauge
- * Description:
- * Author:
- * Date:
+/*  _______ _     _         _____
+ * |__   __(_)   | |       / ____|
+ *    | |   _  __| | ___  | |  __  __ _ _   _  __ _  ___
+ *    | |  | |/ _` |/ _ \ | | |_ |/ _` | | | |/ _` |/ _ \
+ *    | |  | | (_| |  __/ | |__| | (_| | |_| | (_| |  __/
+ *    |_|  |_|\__,_|\___|  \_____|\__,_|\__,_|\__, |\___|
+ *                                             __/ |
+ *                                            |___/
+ * Author: Bryce Kellogg (bryce@kellogg.org)
+ * Copyright: 2021 Bryce Kellogg
+ * License: GPLv3
  */
 #include <queue>
-
-SerialLogHandler logHandler;
-
-
-// Config params
-// Periods are in milliseconds
-unsigned int sensorPollingPeriod = 20000;
-unsigned int cloudUpdatePeriod = 5000;
-unsigned int numSamplesPerPoll = 20;
-unsigned int deviceInfoUpdatePeriod = 60000;
-
-
-// Software timers
-Timer sensorPollingTimer(sensorPollingPeriod, onSensorPollingTimer);
-Timer cloudUpdateTimer(cloudUpdatePeriod, onCloudUpdateTimer);
-Timer deviceInfoUpdateTimer(deviceInfoUpdatePeriod, onDeviceInfoUpdateTimer);
-
-
-// Flags
-bool doSensorPoll = false;
-bool doCloudUpdate = false;
-bool doDeviceInfoUpdate = false;
-
-
-// Timer callbacks
-void onSensorPollingTimer() { doSensorPoll = true; }
-void onCloudUpdateTimer() { doCloudUpdate = true; }
-void onDeviceInfoUpdateTimer() { doDeviceInfoUpdate = true; }
-
-
-// A structure for saving sensor records. This
-// is used to pass data into and out of the queue,
-// and therefore between between the sensing
-// function and the cloud update function.
-struct SensorRecord {
-    uint32_t time;
-    uint16_t data;
-};
 
 
 // Because the queue used to pass sensor records
@@ -79,6 +47,45 @@ struct SensorRecord {
 
 
 // TODO: sync time every day or so
+
+
+// A structure for saving sensor records. This
+// is used to pass data into and out of the queue,
+// and therefore between between the sensing
+// function and the cloud update function.
+struct SensorRecord {
+    uint32_t time;
+    uint16_t data;
+};
+
+
+// Config params
+// Periods are in milliseconds
+unsigned int sensorPollingPeriod = 20000;
+unsigned int cloudUpdatePeriod = 5000;
+unsigned int numSamplesPerPoll = 20;
+unsigned int deviceInfoUpdatePeriod = 60000;
+
+
+// Flags
+bool doSensorPoll = false;
+bool doCloudUpdate = false;
+bool doDeviceInfoUpdate = false;
+
+
+// Timer callbacks
+void onSensorPollingTimer() { doSensorPoll = true; }
+void onCloudUpdateTimer() { doCloudUpdate = true; }
+void onDeviceInfoUpdateTimer() { doDeviceInfoUpdate = true; }
+
+
+// Software timers
+Timer sensorPollingTimer(sensorPollingPeriod, onSensorPollingTimer);
+Timer cloudUpdateTimer(cloudUpdatePeriod, onCloudUpdateTimer);
+Timer deviceInfoUpdateTimer(deviceInfoUpdatePeriod, onDeviceInfoUpdateTimer);
+
+
+SerialLogHandler logHandler;
 
 
 /**
