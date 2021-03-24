@@ -61,10 +61,10 @@ struct SensorRecord {
 
 // Config params
 // Periods are in milliseconds
-unsigned int sensorPollingPeriod = 20000;
-unsigned int cloudUpdatePeriod = 5000;
-unsigned int numSamplesPerPoll = 20;
-unsigned int deviceInfoUpdatePeriod = 60000;
+int sensorPollingPeriod = 20*1000;
+int cloudUpdatePeriod = 30*1000;
+int deviceInfoUpdatePeriod = 5*60*1000;
+unsigned int numSamplesPerPoll = 5;
 
 
 // Flags
@@ -119,6 +119,7 @@ int functionConfig(String params) {
                 sensorPollingPeriod = paramValue.toInt();
                 sensorPollingTimer.changePeriod(sensorPollingPeriod);
             } else if (paramValue.isNull()) {
+                sensorPollingPeriod = -1;
                 sensorPollingTimer.stop();
             }
         }
@@ -132,6 +133,7 @@ int functionConfig(String params) {
 
                 cloudUpdateTimer.changePeriod(cloudUpdatePeriod);
             } else if (paramValue.isNull()) {
+                cloudUpdatePeriod = -1;
                 cloudUpdateTimer.stop();
             }
         }
@@ -149,6 +151,7 @@ int functionConfig(String params) {
 
                 deviceInfoUpdateTimer.changePeriod(deviceInfoUpdatePeriod);
             } else if (paramValue.isNull()) {
+                deviceInfoUpdatePeriod = -1;
                 deviceInfoUpdateTimer.stop();
             }
         }
