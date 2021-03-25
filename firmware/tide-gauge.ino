@@ -26,9 +26,9 @@
 // The size is determined by the JSON format, the object keys, and
 // the maximum length of the values. For time value, we currently
 // only support 32-bit unsigned ints, giving a maximum of 10 digits.
-// For sensor values, the data is in cm and we will not get values
-// from the sensor above 10 m (1000 cm), giving a max of 3 digits.
-#define MAX_BYTES_PER_RECORD sizeof(R"({"time": 4294967295, "data": 999},)")
+// For sensor values, the data is in mm and we will not get values
+// from the sensor above 10 m (9999 mm), giving a max of 4 digits.
+#define MAX_BYTES_PER_RECORD sizeof(R"({"time": 4294967295, "data": 9999},)")
 
 
 // The maximum size of data that we can publish is
@@ -46,7 +46,10 @@
 #define MIN_UPDATE_PERIOD 2000
 
 
-// TODO: sync time every day or so
+// The time interval to use when syncing the
+// onboard clock with the network time (in ms)
+// We don't need to do it very often.
+#define TIME_SYNC_TIMER_PERIOD 23*60*60*1000
 
 
 // A structure for saving sensor records. This
@@ -68,18 +71,21 @@ unsigned int numSamplesPerPoll = 5;
 
 
 // Flags
+bool doTimeSync = false;
 bool doSensorPoll = false;
 bool doCloudUpdate = false;
 bool doDeviceInfoUpdate = false;
 
 
 // Timer callbacks
+void onTimeSyncTimer() { doTimeSync = true; }
 void onSensorPollingTimer() { doSensorPoll = true; }
 void onCloudUpdateTimer() { doCloudUpdate = true; }
 void onDeviceInfoUpdateTimer() { doDeviceInfoUpdate = true; }
 
 
 // Software timers
+Timer timeSyncTimer(TIME_SYNC_TIMER_PERIOD, onTimeSyncTimer);
 Timer sensorPollingTimer(sensorPollingPeriod, onSensorPollingTimer);
 Timer cloudUpdateTimer(cloudUpdatePeriod, onCloudUpdateTimer);
 Timer deviceInfoUpdateTimer(deviceInfoUpdatePeriod, onDeviceInfoUpdateTimer);
@@ -306,6 +312,19 @@ bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
 
 
 /**
+ * Sync device time with the cloud.
+ *
+ * Over time the on board clock can get out
+ * of sync, so we ping the cloud every once
+ * in a while to resync with network time.
+ **/
+bool timeSync() {
+    Particle.syncTime();
+    return false;
+}
+
+
+/**
  * Setup function that gets called once at start up. We
  * are guaranteed to have cloud connectivity when this
  * function is run. Registers config function and starts
@@ -316,6 +335,7 @@ void setup() {
     Particle.function("config", functionConfig);
 
     // Start timers
+    timeSyncTimer.start();
     sensorPollingTimer.start();
     cloudUpdateTimer.start();
     deviceInfoUpdateTimer.start();
@@ -329,6 +349,7 @@ void setup() {
  **/
 void loop() {
     static std::queue<SensorRecord> recordQueue;
+    if (doTimeSync) doTimeSync = timeSync();
     if (doSensorPoll) doSensorPoll = sensorPolling(recordQueue);
     if (doCloudUpdate) doCloudUpdate = cloudUpdate(recordQueue);
     if (doDeviceInfoUpdate) doDeviceInfoUpdate = deviceInfoUpdate(recordQueue);
