@@ -89,6 +89,33 @@ Resources:
     Properties:
       Name: TideAPI
 
+  # A deployment is a way of tracking verions
+  # of the API that is deployed to a stage.
+  # This isn't super useful to have in
+  # CloudFormation templates and was causing
+  # some errors earlier.
+  RestDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - MethodPostSensorData
+      - MethodGetSensorData
+      - MethodPostDeviceData
+      - MethodGetDeviceData
+      - MethodPostDeviceConfig
+      - MethodPostLogin
+    Properties:
+      RestApiId: !Ref RestAPI
+
+  # A stage represents various versions of the
+  # deployed API. We  only have a single
+  # stage and don't really worry about this.
+  RestStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: production
+      RestApiId: !Ref RestAPI
+      DeploymentId: !Ref RestDeployment
+
   # This represents the URL at /sensor-data for publishing
   # and querying sensor data from the database
   ResourceSensorData:
@@ -136,7 +163,7 @@ Resources:
   MethodPostSensorData:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: POST
       AuthorizationType: NONE
       ResourceId: !Ref ResourceSensorData
@@ -158,7 +185,7 @@ Resources:
   MethodGetSensorData:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: GET
       AuthorizationType: NONE
       ResourceId: !Ref ResourceSensorData
@@ -187,7 +214,7 @@ Resources:
   MethodPostDeviceData:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: POST
       AuthorizationType: NONE
       ResourceId: !Ref ResourceDeviceData
@@ -218,7 +245,7 @@ Resources:
   MethodGetDeviceData:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: GET
       AuthorizationType: NONE
       ResourceId: !Ref ResourceDeviceData
@@ -243,7 +270,7 @@ Resources:
   MethodPostDeviceConfig:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: POST
       AuthorizationType: NONE
       ResourceId: !Ref ResourceDeviceConfig
@@ -272,7 +299,7 @@ Resources:
   MethodPostLogin:
     Type: AWS::ApiGateway::Method
     Properties:
-      ApiKeyRequired: false  #TODO: change to true
+      ApiKeyRequired: true
       HttpMethod: POST
       AuthorizationType: NONE
       ResourceId: !Ref ResourceLogin
