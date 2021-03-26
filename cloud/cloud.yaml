@@ -264,16 +264,22 @@ Resources:
               - deviceID: !Ref DeviceID
                 token: !Ref ParticleToken
 
-  # An HTTP GET method for to "log in" to the
+  # An HTTP POST method for to "log in" to the
   # API. In reality, this just always returns
   # success with no content. That allows us
   # to check that we have a valid API key
   # and acts as our "login" step.
-  MethodGetLogin:
+  MethodPostLogin:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: false  #TODO: change to true
-      HttpMethod: GET
+      HttpMethod: POST
       AuthorizationType: NONE
       ResourceId: !Ref ResourceLogin
       RestApiId: !Ref RestAPI
+      Integration:
+        Type: MOCK
+        RequestTemplates: {"application/json": '{"statusCode": 200}'}
+        IntegrationResponses: [{StatusCode: 200}]
+      MethodResponses: [{StatusCode: 200}]
+
