@@ -245,7 +245,7 @@ bool cloudUpdate(std::queue<SensorRecord>& recordQueue) {
     // Publish data (if any) to cloud
     if (numRecords > 0) {
         Log.info("Publishing: %d records for %d bytes", numRecords, numBytes);
-        Particle.publish("/tide-data/", buff);
+        Particle.publish("sensor-data", buff);
         lastPublish = Time.now();
     }
 
@@ -305,7 +305,7 @@ bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
     Log.info("deviceInfoUpdatePeriod = %d", deviceInfoUpdatePeriod);
     Log.info("batteryPercent = %.2f", batteryPercent);
     Log.info("queueSize = %d", queueSize);
-    Particle.publish("/device-data/", buff);
+    Particle.publish("device-data", buff);
 
     return false;
 }
