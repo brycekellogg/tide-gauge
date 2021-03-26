@@ -2,16 +2,13 @@ Parameters:
   LambdaSource:
     Type: String
 
-Resources:
-  Database:
-    Type: AWS::Timestream::Database
-    Properties: {DatabaseName: MudFlatsTideData}
+  DeviceID:
+    Type: String
 
-  DatabaseTable:
-    Type: AWS::Timestream::Table
-    Properties:
-      DatabaseName: !Ref Database
-      TableName: WaterLevel
+  ParticleToken:
+    Type: String
+
+Resources:
 
   LambdaFunctionRole:
     Type: AWS::IAM::Role
@@ -46,30 +43,59 @@ Resources:
       FunctionName: !Ref LambdaFunction
       Principal: apigateway.amazonaws.com
 
+  # This is the database where we store
+  # all the data returned from the device.
+  Database:
+    Type: AWS::Timestream::Database
+    Properties: {DatabaseName: MudFlatsTideData}
 
+  # This table is used to store sensor data
+  TableSensorData:
+    Type: AWS::Timestream::Table
+    Properties:
+      DatabaseName: !Ref Database
+      TableName: SensorData
+
+  # This table is used to store device data
+  TableDeviceData:
+    Type: AWS::Timestream::Table
+    Properties:
+      DatabaseName: !Ref Database
+      TableName: DeviceData
+
+  # We use a single AWS Lambda function to
+  # respond to most API calls. Anything that
+  # requires interaction with the database
+  # goes through this same function. The
+  # function acts based on the URL resource
+  # and the HTTP method used.
   LambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
       Runtime: python3.8
-      Handler: lambda.post
+      Handler: lambda.process
       Role: !GetAtt LambdaFunctionRole.Arn
       Code:
         S3Bucket: "tide-project"
         S3Key: !Ref LambdaSource
 
-
+  # Creates an AWS API Gateway resource that we
+  # then attach all our other URL resources and
+  # HTTP methods to. All interaction with the
+  # system will be through this API. The app
+  # will not directly connect to Particle.io
   RestAPI:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: TideAPI
 
-  # This represents the URL at /tide-data for publishing
-  # and querying water level data from the database
-  ResourceTideData:
+  # This represents the URL at /sensor-data for publishing
+  # and querying sensor data from the database
+  ResourceSensorData:
     Type: AWS::ApiGateway::Resource
     Properties:
       ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
-      PathPart: tide-data
+      PathPart: sensor-data
       RestApiId: !Ref RestAPI
 
   # This represents the URL at /device-data for setting
@@ -81,22 +107,39 @@ Resources:
       PathPart: device-data
       RestApiId: !Ref RestAPI
 
+  # This represents the URL at /device-config for setting
+  # device parameters such as polling intervals.
+  ResourceDeviceConfig:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: device-config
+      RestApiId: !Ref RestAPI
 
-  # An HTTP POST method for publishing data to
+  # This represents the URL at /login for checking
+  # if we have a valid API key for a login step.
+  ResourceLogin:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: login
+      RestApiId: !Ref RestAPI
+
+
+  # An HTTP POST method for publishing sensor data to
   # the database. Expects data of the form:
-  #   {
-  #     "data": [
-  #       {"time": <int>, "data": <int>},
-  #       {"time": <int>, "data": <int>}
-  #     ]
-  #   }
-  MethodPostTideData:
+  #   [
+  #     {"time": <int>, "data": <int>},
+  #     {"time": <int>, "data": <int>},
+  #     ...
+  #   ]
+  MethodPostSensorData:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: false  #TODO: change to true
       HttpMethod: POST
       AuthorizationType: NONE
-      ResourceId: !Ref ResourceTideData
+      ResourceId: !Ref ResourceSensorData
       RestApiId: !Ref RestAPI
       Integration:
         Type: AWS_PROXY
@@ -104,3 +147,133 @@ Resources:
         Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
           - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP GET method for querying sensor from
+  # the database. Returns data of the form:
+  #   [
+  #     {"time": <int>, "data": <int>},
+  #     {"time": <int>, "data": <int>},
+  #     ...
+  #   ]
+  MethodGetSensorData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceSensorData
+      RestApiId: !Ref RestAPI
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: GET
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP POST method for publishing device
+  # data to the database. Expects data of the form:
+  #   {
+  #     "time": <int>,
+  #     "sensorPollingPeriod": <int>,
+  #     "cloudUpdatePeriod": <int>,
+  #     "numSamplesPerPoll": <int>,
+  #     "deviceInfoUpdatePeriod": <int>,
+  #     "batteryPercent": <float>,
+  #     "queueSize": <int>
+  #   }
+  # Note that unlike other methods, we only publish
+  # a single record at a time. Top level is a JSON
+  # object not a JSON array.
+  MethodPostDeviceData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceDeviceData
+      RestApiId: !Ref RestAPI
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP GET method for querying device data from
+  # the database. Returns data of the form:
+  #   [
+  #     {
+  #       "time": <int>,
+  #       "sensorPollingPeriod": <int>,
+  #       "cloudUpdatePeriod": <int>,
+  #       "numSamplesPerPoll": <int>,
+  #       "deviceInfoUpdatePeriod": <int>,
+  #       "batteryPercent": <float>,
+  #       "queueSize": <int>
+  #     },
+  #     ....
+  #   ]
+  # Note that unlike POSTing to the same resource,
+  # GET returns a JSON array of data.
+  MethodGetDeviceData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceDeviceData
+      RestApiId: !Ref RestAPI
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: GET
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP POST method for setting device
+  # config params. Expects data of the form:
+  #   {
+  #     "sensorPollingPeriod": <int>,
+  #     "cloudUpdatePeriod": <int>,
+  #     "numSamplesPerPoll": <int>,
+  #     "deviceInfoUpdatePeriod": <int>
+  #   }
+  # This will forward data to the Particle.io
+  # cloud for transmission to the device.
+  MethodPostDeviceConfig:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceDeviceConfig
+      RestApiId: !Ref RestAPI
+      Integration:
+        Type: HTTP
+        IntegrationHttpMethod: POST
+        Uri: https://api.particle.io/v1/devices/{deviceID}/config
+        RequestTemplates:
+          "application/json":
+            Fn::Sub:
+              - '
+                #set($context.requestOverride.path.deviceID = "${deviceID}")
+                #set($context.requestOverride.header.Authorization = "Bearer ${token}")
+                {
+                  "arg": "$util.escapeJavaScript($input.body)"
+                }'
+              - deviceID: !Ref DeviceID
+                token: !Ref ParticleToken
+
+  # An HTTP GET method for to "log in" to the
+  # API. In reality, this just always returns
+  # success with no content. That allows us
+  # to check that we have a valid API key
+  # and acts as our "login" step.
+  MethodGetLogin:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false  #TODO: change to true
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceLogin
+      RestApiId: !Ref RestAPI
