@@ -116,6 +116,20 @@ Resources:
       RestApiId: !Ref RestAPI
       DeploymentId: !Ref RestDeployment
 
+  # Allows us to limit usage of the
+  # API by setting the number of times
+  # per time period an API key works.
+  RestUsagePlan:
+    Type: 'AWS::ApiGateway::UsagePlan'
+    Properties:
+      ApiStages:
+        - ApiId: !Ref RestAPI
+          Stage: !Ref RestStage
+      Quota: {Limit: 3000, Period: DAY}
+      Throttle: {BurstLimit: 10, RateLimit: 2}
+      UsagePlanName: UsagePlan
+
+
   # This represents the URL at /sensor-data for publishing
   # and querying sensor data from the database
   ResourceSensorData:
