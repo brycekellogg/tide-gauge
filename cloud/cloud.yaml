@@ -170,8 +170,8 @@ Resources:
   # An HTTP POST method for publishing sensor data to
   # the database. Expects data of the form:
   #   [
-  #     {"time": <int>, "data": <int>},
-  #     {"time": <int>, "data": <int>},
+  #     {"id": <id>, "time": <int>, "data": <int>},
+  #     {"id": <id>, "time": <int>, "data": <int>},
   #     ...
   #   ]
   MethodPostSensorData:
@@ -192,8 +192,8 @@ Resources:
   # An HTTP GET method for querying sensor from
   # the database. Returns data of the form:
   #   [
-  #     {"time": <int>, "data": <int>},
-  #     {"time": <int>, "data": <int>},
+  #     {"id": <id>, "time": <int>, "data": <int>},
+  #     {"id": <id>, "time": <int>, "data": <int>},
   #     ...
   #   ]
   MethodGetSensorData:
@@ -214,6 +214,7 @@ Resources:
   # An HTTP POST method for publishing device
   # data to the database. Expects data of the form:
   #   {
+  #     "id": <id>,
   #     "time": <int>,
   #     "sensorPollingPeriod": <int>,
   #     "cloudUpdatePeriod": <int>,
@@ -244,6 +245,7 @@ Resources:
   # the database. Returns data of the form:
   #   [
   #     {
+  #       "id": <id>,
   #       "time": <int>,
   #       "sensorPollingPeriod": <int>,
   #       "cloudUpdatePeriod": <int>,
