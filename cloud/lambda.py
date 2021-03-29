@@ -1,69 +1,145 @@
-import boto3
-import json
-from schema import *
-from datetime import datetime, timezone
+#  _______ _     _         _____
+# |__   __(_)   | |       / ____|
+#    | |   _  __| | ___  | |  __  __ _ _   _  __ _  ___
+#    | |  | |/ _` |/ _ \ | | |_ |/ _` | | | |/ _` |/ _ \
+#    | |  | | (_| |  __/ | |__| | (_| | |_| | (_| |  __/
+#    |_|  |_|\__,_|\___|  \_____|\__,_|\__,_|\__, |\___|
+#                                             __/ |
+#                                            |___/
+# Author: Bryce Kellogg (bryce@kellogg.org)
+# Copyright: 2021 Bryce Kellogg
+# License: GPLv3
+"""
+Schema:
 
+
+
+"""
+import json
+import os
+from datetime import datetime
 from pprint import pprint
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+from schema import *
+from sqlalchemy import *
+from sqlalchemy.dialects import registry
+registry.register("s3sqlite", "sqlalchemy-s3sqlite.dialect", "S3SQLiteDialect")
+
+
+# Database info
+meta = MetaData()
+
+# +-----------+----------+
+# | Field     | Type     |
+# +-----------+----------+
+# | id        | INT      |
+# | deviceID  | VARCHAR  |
+# | timestamp | DATETIME |
+# | distance  | INT      |
+# +---------+------------+
+sensorData = Table('sensorData', meta,
+                   Column('id', Integer, primary_key = True),
+                   Column('deviceID', String(24)),
+                   Column('timestamp', DateTime),
+                   Column('distance', Integer))
+
+# +------------------------+----------+
+# | Field                  | Type     |
+# +------------------------+----------+
+# | id                     | INT      |
+# | deviceID               | VARCHAR  |
+# | timestamp              | DATETIME |
+# | sensorPollingPeriod    | INT      |
+# | cloudUpdatePeriod      | INT      |
+# | numSamplesPerPoll      | INT      |
+# | deviceInfoUpdatePeriod | INT      |
+# | batteryPercent         | FLOAT    |
+# | queueSize              | INT      |
+# +------------------------+----------+
+deviceData = Table('deviceData', meta,
+                   Column('id', Integer, primary_key = True),
+                   Column('deviceID', String(24)),
+                   Column('timestamp', DateTime),
+                   Column('sensorPollingPeriod', Integer),
+                   Column('cloudUpdatePeriod', Integer),
+                   Column('numSamplesPerPoll', Integer),
+                   Column('deviceInfoUpdatePeriod', Integer),
+                   Column('batteryPercent', Float),
+                   Column('queueSize', Integer))
+
+# # engine = create_engine('sqlite:///test.db')
+# engine = create_engine('mysql+auroradataapi://:@/TideGaugeData', echo=True)
+engine = create_engine('s3sqlite:///tide-data.sqlite', echo=True)
+meta.create_all(engine)
 
 def process(event, context):
-    print(event)
+    url = event['path']
+    method = event['httpMethod']
+    body = event['body']
+
+    pprint(url)
+    pprint(method)
+    pprint(body)
+
+    if url == '/sensor-data' and method == 'POST': return saveSensorData(body)
+    if url == '/device-data' and method == 'POST': return print("saveDeviceData")
+    if url == '/sensor-data' and method == 'GET':  return readSensorData()
+    if url == '/device-data' and method == 'GET':  return print("readDeviceData")
     return {
-        'statusCode': 200,
-        'body': 'OK'
+        'statusCode': 400,
+        'body': 'Bad Request'
     }
 
 
 
-def saveSensorData(data, databaseName='MudFlatsTideData', tableName='SensorData'):
+def saveSensorData(body):
     """
-    A helper function that saves sensor data to the AWS Timestream database.
+    A helper function that saves sensor data to the AWS database.
     The incoming data is expected to be a string of JSON in the format:
-         [
-             {"id": <str>, "time": <int>, "data": <int>},
-             {"id": <str>, "time": <int>, "data": <int>},
-             ...
-          ]
+        {
+            "id": <str>,
+            "records": [
+                {"time": <int>, "data": <int>},
+                {"time": <int>, "data": <int>},
+                ...
+            ]
+        }
     This string is converted to JSON and validated to make sure it conforms
-    to the data format schema. It is then written to the AWS Timestream
-    database such that each element of the our array becomes a single database
-    record with `data` being the MeasureValue, `time` providing the Time stamp
-    in seconds (unix time), and `id` being a dimension of the record.
+    to the data format schema. It is then written to the AWS database such
+    that each element of the our array becomes a single database record.
     """
 
     # Validate incoming data
-    schema = Schema(And(Use(json.loads), [{'id': str, 'time': int, 'data': int}]))
-    try: validated = schema.validate(data)
+    schema = Schema(And(Use(json.loads), {'id': str, 'records': [{'time': Use(int), 'data': int}]}))
+    try: body = schema.validate(body)
     except SchemaError as e: return {'statusCode': 400, 'body': 'invalid data'}
 
-    # Convert into a format for Timestream Records
-    records = [{}]*len(validated)
-    for i,r in enumerate(validated):
-        deviceID = r['id']
-        data = r['data']
-        time = r['time']
-        record = {'Dimensions': [{'Name': 'id', 'Value': str(deviceID)}],
-                  'MeasureName': 'dist',
-                  'MeasureValue': str(data),
-                  'MeasureValueType': 'DOUBLE',
-                  'Time': str(time),
-                  'TimeUnit': 'SECONDS'}
-        records[i] = record
+    # Build list of records from input JSON
+    records = []
+    for r in body['records']:
+        deviceID = body['id']
+        distance = r['data']
+        timestamp = datetime.utcfromtimestamp(r['time'])
+        record = {'deviceID': deviceID,
+                  'timestamp': timestamp,
+                  'distance': distance}
+        records.append(record)
 
-    # # Write data to Timestream
-    client = boto3.client('timestream-write')
-    response = client.write_records(DatabaseName=databaseName,
-                                    TableName=tableName,
-                                    Records=records)
+
+    # Insert data into the `sensorData` table in databse
+    result = engine.connect().execute(sensorData.insert(), records)
 
     # Query was a success, return success code
     return {'statusCode': 200, 'body': 'OK'}
 
 
-def saveDeviceData(data, databaseName='MudFlatsTideData', tableName='DeviceData'):
+def saveDeviceData(body):
     """
-    A helper function that saves device data to the AWS Timestream database.
-    The incoming data is expected to be string represenation of a JSON object
-    of the following form:
+    A helper function that saves device data to the AWS database.
+    The incoming data is expected to be a string of JSON in the format:
              {
                "id": <str>,
                "time": <int>,
@@ -75,11 +151,8 @@ def saveDeviceData(data, databaseName='MudFlatsTideData', tableName='DeviceData'
                "queueSize": <int>
              }
     This string is converted to JSON and validated to make sure it conforms
-    to the data format schema. It is then written to the AWS Timestream
-    database as a series of records (one for each parameter, excluding id/time).
-    The `id` entry is used as a dimension for each record, and the `time` entry
-    as the Time stamp. All other entries are converted to their own record
-    where they are saved as the main Measure.
+    to the data format schema. It is then written to the AWS database as a
+    single database record.
     """
 
     # Validate incoming data
@@ -91,70 +164,61 @@ def saveDeviceData(data, databaseName='MudFlatsTideData', tableName='DeviceData'
                                           "deviceInfoUpdatePeriod": int,
                                           "batteryPercent": float,
                                           "queueSize": int}))
-    try: validated = schema.validate(data)
+    try: body = schema.validate(data)
     except SchemaError as e: return {'statusCode': 400, 'body': 'invalid data'}
 
-    # Convert records into a format for Timestream Records
-    records = []
-    for key,value in validated.items():
-        if key in ('id', 'time'): continue  # skip these, not data
-        record = {'MeasureName': key, 'MeasureValue': str(value)}
-        records.append(record)
+    # Build list of records from input JSON
+    deviceID = body['id']
+    timestamp = datetime.utcfromtimestamp(body['time'])
+    sensorPollingPeriod = body['sensorPollingPeriod']
+    cloudUpdatePeriod = body['cloudUpdatePeriod']
+    numSamplesPerPoll = body['numSamplesPerPoll']
+    deviceInfoUpdatePeriod = body['deviceInfoUpdatePeriod']
+    batterPercent = body['batteryPercent']
+    queueSize = body['queueSize']
 
-    # Gather common attributes
-    deviceID = validated['id']
-    time = validated['time']
-    attributes = {'Dimensions': [{'Name': 'id', 'Value': str(deviceID)}],
-                  'Time': str(time),
-                  'TimeUnit': 'SECONDS',
-                  'MeasureValueType': 'DOUBLE'}
+    records = [{'deviceID': deviceID,
+                'timestamp': timestamp,
+                'sensorPollingPeriod': sensorPollingPeriod,
+                'cloudUpdatePeriod': cloudUpdatePeriod,
+                'numSamplesPerPoll': numSamplesPerPoll,
+                'deviceInfoUpdatePeriod': deviceInfoUpdatePeriod,
+                'batteryPercent': batteryPercent,
+                'queueSize': queueSize}]
 
-    # Write data to Timestream
-    client = boto3.client('timestream-write')
-    response = client.write_records(DatabaseName=databaseName,
-                                    TableName=tableName,
-                                    CommonAttributes=attributes,
-                                    Records=records)
+    # Insert data into the `deviceData` table in databse
+    result = engine.connect().execute(deviceData.insert(), records)
 
     # Query was a success, return success code
     return {'statusCode': 200, 'body': 'OK'}
 
 
-def readSensorData(databaseName='MudFlatsTideData', tableName='SensorData'):
+def readSensorData():
     """
 
+        [
+            {"id", <int>, "deviceID", <str>, "timestamp": <str>, "distance": <int>},
+            {"id", <int>, "deviceID", <str>, "timestamp": <str>, "distance": <int>},
+            ...
+        ]
+
+
     """
 
-    # Build query string
-    queryString = f"""
-        SELECT * FROM "{databaseName}"."{tableName}"
-    """
-    # TODO: add filtering (WHERE clause)
+    # Perform query on `sensorData` table in database
+    results = engine.connect().execute(sensorData.select())
 
-    # Perform query
-    client = boto3.client('timestream-query')
-    response = client.query(QueryString=queryString)
-
-    # Parse response
-    columnInfo = response['ColumnInfo']
-    rows = response['Rows']
-
-    # Get indices of each interesting known column
-    indexID = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'id')
-    indexMeas = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'measure_value::bigint')
-    indexName = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'measure_name')
-    indexTime = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'time')
-
-    # Build wanted response format
+    # Convert database result to JSON output format
     records = []
-    for r in rows:
-        deviceID = r['Data'][indexID]['ScalarValue']
-        data = r['Data'][indexMeas]['ScalarValue']
-        time = r['Data'][indexTime]['ScalarValue']
-        time = datetime.strptime(time, '%Y-%m-%d %H:%M:%S.000000000')
-        time = time.replace(tzinfo=timezone.utc).timestamp()
-
-        record = {'id': deviceID, 'time': time, 'data': data}
+    for r in results:
+        recordID = r[0]
+        deviceID = r[1]
+        timestamp = r[2].isoformat()
+        distance = r[3]
+        record = {'id': recordID,
+                  'deviceID': deviceID,
+                  'timestamp': timestamp,
+                  'distance': distance}
         records.append(record)
 
     # Return data
@@ -167,47 +231,45 @@ def readSensorData(databaseName='MudFlatsTideData', tableName='SensorData'):
 def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
     """
          [
-             {"id": <str>, "time": <int>, <deviceMeasure>: <int>},
-             {"id": <str>, "time": <int>, <deviceMeasure>: <int>},
+             {
+                "id": <int>,
+                "deviceID": <str>,
+                "timestamp": <str>,
+                "sensorPollingPeriod": <int>,
+                "cloudUpdatePeriod": <int>,
+                "numSamplesPerPoll": <int>,
+                "deviceInfoUpdatePeriod": <int>,
+                "batteryPercent": <float>,
+                "queueSize": <int>
+            },
              ...
           ]
-
-          Really need to be able to filter by deviceMeasure name as well
-          as by timestamp
-
     """
+    # Perform query on `deviceData` table in database
+    results = engine.connect().execute(deviceData.select())
 
-    # Build query string
-    queryString = f"""
-        SELECT * FROM "{databaseName}"."{tableName}"
-    """
-    # TODO: add filtering (WHERE clause)
-
-    # Perform query
-    client = boto3.client('timestream-query')
-    response = client.query(QueryString=queryString)
-
-    # Parse response
-    columnInfo = response['ColumnInfo']
-    rows = response['Rows']
-
-    # Get indices of each interesting known column
-    indexID = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'id')
-    indexMeas = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'measure_value::double')
-    indexName = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'measure_name')
-    indexTime = next(i for i,_ in enumerate(columnInfo) if _['Name'] == 'time')
-
-    # Build wanted response format
+    # Convert database result to JSON output format
     records = []
-    for r in rows:
-        deviceID = r['Data'][indexID]['ScalarValue']
-        name = r['Data'][indexName]['ScalarValue']
-        data = r['Data'][indexMeas]['ScalarValue']
-        time = r['Data'][indexTime]['ScalarValue']
-        time = datetime.strptime(time, '%Y-%m-%d %H:%M:%S.000000000')
-        time = time.replace(tzinfo=timezone.utc).timestamp()
+    for r in results:
+        recordID = r[0]
+        deviceID = r[1]
+        timestamp = r[2].isoformat()
+        sensorPollingPeriod = r[3]
+        cloudUpdatePeriod = r[4]
+        numSamplesPerPoll = r[5]
+        deviceInfoUpdatePeriod = r[6]
+        batterPercent = r[7]
+        queueSize = r[8]
 
-        record = {'id': deviceID, 'time': time, name: data}
+        record = {'id': recordID,
+                  'deviceID': deviceID,
+                  'timestamp': timestamp,
+                  'sensorPollingPeriod': sensorPollingPeriod,
+                  'cloudUpdatePeriod': cloudUpdatePeriod,
+                  'numSamplesPerPoll': numSamplesPerPoll,
+                  'deviceInfoUpdatePeriod': deviceInfoUpdatePeriod,
+                  'batteryPercent': batteryPercent,
+                  'queueSize': queueSize}
         records.append(record)
 
     # Return data
@@ -216,34 +278,3 @@ def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
         'body': json.dumps(records)
     }
 
-
-def test():
-    sampleSensorData = """
-       [
-         {"id": "e00fce683a5c196e475722dd", "time":1616790214, "data": 800},
-         {"id": "e00fce683a5c196e475722dd", "time":1616790230, "data": 12}
-       ]
-       """
-
-    sampleDeviceData = """
-       {
-         "id": "e00fce683a5c196e475722dd",
-         "time": 1616790235,
-         "sensorPollingPeriod": 2000,
-         "cloudUpdatePeriod": 10000,
-         "numSamplesPerPoll": 2,
-         "deviceInfoUpdatePeriod": 30000,
-         "batteryPercent": 1.2,
-         "queueSize": 5
-       }
-       """
-
-    # res = saveSensorData(sampleSensorData)
-    # res = saveDeviceData(sampleDeviceData)
-    # res = readSensorData()
-    res = readDeviceData()
-    print(res)
-
-
-if __name__ == '__main__':
-    test()

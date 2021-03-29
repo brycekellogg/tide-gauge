@@ -2,6 +2,9 @@ Parameters:
   LambdaSource:
     Type: String
 
+  BucketName:
+    Type: String
+
   DeviceID:
     Type: String
 
@@ -10,6 +13,7 @@ Parameters:
 
 Resources:
 
+
   LambdaFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -17,24 +21,15 @@ Resources:
         Version: '2012-10-17'
         Statement:
         - Effect: Allow
-          Principal:
-            Service: [lambda.amazonaws.com]
+          Principal: {Service: [lambda.amazonaws.com]}
           Action: [sts:AssumeRole]
-      Path: "/"
-      Policies:
-      - PolicyName: LambdaFunctionPolicy
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-              - logs:CreateLogGroup
-              - logs:CreateLogStream
-              - logs:PutLogEvents
-            Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
 
   ConfigLambdaPermission:
-    Type: "AWS::Lambda::Permission"
+    Type: AWS::Lambda::Permission
     DependsOn:
     - RestAPI
     - LambdaFunction
@@ -43,25 +38,6 @@ Resources:
       FunctionName: !Ref LambdaFunction
       Principal: apigateway.amazonaws.com
 
-  # This is the database where we store
-  # all the data returned from the device.
-  Database:
-    Type: AWS::Timestream::Database
-    Properties: {DatabaseName: MudFlatsTideData}
-
-  # This table is used to store sensor data
-  TableSensorData:
-    Type: AWS::Timestream::Table
-    Properties:
-      DatabaseName: !Ref Database
-      TableName: SensorData
-
-  # This table is used to store device data
-  TableDeviceData:
-    Type: AWS::Timestream::Table
-    Properties:
-      DatabaseName: !Ref Database
-      TableName: DeviceData
 
   # We use a single AWS Lambda function to
   # respond to most API calls. Anything that
@@ -76,8 +52,12 @@ Resources:
       Handler: lambda.process
       Role: !GetAtt LambdaFunctionRole.Arn
       Code:
-        S3Bucket: "tide-project"
+        S3Bucket: !Ref BucketName
         S3Key: !Ref LambdaSource
+      Environment:
+        Variables:
+          S3SQLite_bucket: !Ref BucketName
+
 
   # Creates an AWS API Gateway resource that we
   # then attach all our other URL resources and
