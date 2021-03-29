@@ -80,14 +80,13 @@ def process(event, context):
     method = event['httpMethod']
     body = event['body']
 
-    pprint(url)
-    pprint(method)
-    pprint(body)
-
+    # Call correct helper function based on path & method
     if url == '/sensor-data' and method == 'POST': return saveSensorData(body)
-    if url == '/device-data' and method == 'POST': return print("saveDeviceData")
+    if url == '/device-data' and method == 'POST': return saveDeviceData(body)
     if url == '/sensor-data' and method == 'GET':  return readSensorData()
-    if url == '/device-data' and method == 'GET':  return print("readDeviceData")
+    if url == '/device-data' and method == 'GET':  return readDeviceData()
+
+    # If we make it here, something is wrong
     return {
         'statusCode': 400,
         'body': 'Bad Request'
@@ -164,7 +163,7 @@ def saveDeviceData(body):
                                           "deviceInfoUpdatePeriod": int,
                                           "batteryPercent": float,
                                           "queueSize": int}))
-    try: body = schema.validate(data)
+    try: body = schema.validate(body)
     except SchemaError as e: return {'statusCode': 400, 'body': 'invalid data'}
 
     # Build list of records from input JSON
@@ -174,7 +173,7 @@ def saveDeviceData(body):
     cloudUpdatePeriod = body['cloudUpdatePeriod']
     numSamplesPerPoll = body['numSamplesPerPoll']
     deviceInfoUpdatePeriod = body['deviceInfoUpdatePeriod']
-    batterPercent = body['batteryPercent']
+    batteryPercent = body['batteryPercent']
     queueSize = body['queueSize']
 
     records = [{'deviceID': deviceID,
@@ -258,7 +257,7 @@ def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
         cloudUpdatePeriod = r[4]
         numSamplesPerPoll = r[5]
         deviceInfoUpdatePeriod = r[6]
-        batterPercent = r[7]
+        batteryPercent = r[7]
         queueSize = r[8]
 
         record = {'id': recordID,
