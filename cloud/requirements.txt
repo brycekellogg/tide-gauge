@@ -1,0 +1,10 @@
+schema
+contextlib2>=0.5.5
+sqlalchemy
+greenlet!=0.4.17
+sqlalchemy
+aurora-data-api>=0.2.7
+s3transfer<0.4.0,>=0.3.0
+jmespath<1.0.0,>=0.7.1
+python-dateutil<3.0.0,>=2.1
+git+git://github.com/brycekellogg/sqlalchemy-s3sqlite.git
