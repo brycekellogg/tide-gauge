@@ -14,6 +14,9 @@ Parameters:
 Resources:
 
 
+  # Gives the lambda function permission
+  # to save logs to CloudWatch and to
+  # access database saved to S3.
   LambdaFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -28,6 +31,8 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
 
+  # Gives the API Gateway permission
+  # to invoke the lambda function.
   ConfigLambdaPermission:
     Type: AWS::Lambda::Permission
     DependsOn:
@@ -37,7 +42,6 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !Ref LambdaFunction
       Principal: apigateway.amazonaws.com
-
 
   # We use a single AWS Lambda function to
   # respond to most API calls. Anything that
@@ -51,13 +55,13 @@ Resources:
       Runtime: python3.8
       Handler: lambda.process
       Role: !GetAtt LambdaFunctionRole.Arn
+      ReservedConcurrentExecutions: 1
       Code:
         S3Bucket: !Ref BucketName
         S3Key: !Ref LambdaSource
       Environment:
         Variables:
           S3SQLite_bucket: !Ref BucketName
-
 
   # Creates an AWS API Gateway resource that we
   # then attach all our other URL resources and
