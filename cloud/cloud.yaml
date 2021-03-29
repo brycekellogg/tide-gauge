@@ -77,12 +77,10 @@ Resources:
   RestDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
-      - MethodPostSensorData
-      - MethodGetSensorData
-      - MethodPostDeviceData
-      - MethodGetDeviceData
-      - MethodPostDeviceConfig
-      - MethodPostLogin
+      - MethodSensorData
+      - MethodDeviceData
+      - MethodDeviceConfig
+      - MethodLogin
     Properties:
       RestApiId: !Ref RestAPI
 
@@ -108,7 +106,6 @@ Resources:
       Quota: {Limit: 3000, Period: DAY}
       Throttle: {BurstLimit: 10, RateLimit: 2}
       UsagePlanName: UsagePlan
-
 
   # This represents the URL at /sensor-data for publishing
   # and querying sensor data from the database
@@ -147,18 +144,13 @@ Resources:
       RestApiId: !Ref RestAPI
 
 
-  # An HTTP POST method for publishing sensor data to
-  # the database. Expects data of the form:
-  #   [
-  #     {"id": <id>, "time": <int>, "data": <int>},
-  #     {"id": <id>, "time": <int>, "data": <int>},
-  #     ...
-  #   ]
-  MethodPostSensorData:
+  # An HTTP method for forwarding a sensor data
+  # HTTP request to the lambda function.
+  MethodSensorData:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: true
-      HttpMethod: POST
+      HttpMethod: ANY
       AuthorizationType: NONE
       ResourceId: !Ref ResourceSensorData
       RestApiId: !Ref RestAPI
@@ -169,48 +161,13 @@ Resources:
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
           - LambdaArn: !GetAtt LambdaFunction.Arn
 
-  # An HTTP GET method for querying sensor from
-  # the database. Returns data of the form:
-  #   [
-  #     {"id": <id>, "time": <int>, "data": <int>},
-  #     {"id": <id>, "time": <int>, "data": <int>},
-  #     ...
-  #   ]
-  MethodGetSensorData:
+  # An HTTP method for forwarding a device data
+  # HTTP request to the lambda function.
+  MethodDeviceData:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: true
-      HttpMethod: GET
-      AuthorizationType: NONE
-      ResourceId: !Ref ResourceSensorData
-      RestApiId: !Ref RestAPI
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: GET
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-          - LambdaArn: !GetAtt LambdaFunction.Arn
-
-  # An HTTP POST method for publishing device
-  # data to the database. Expects data of the form:
-  #   {
-  #     "id": <id>,
-  #     "time": <int>,
-  #     "sensorPollingPeriod": <int>,
-  #     "cloudUpdatePeriod": <int>,
-  #     "numSamplesPerPoll": <int>,
-  #     "deviceInfoUpdatePeriod": <int>,
-  #     "batteryPercent": <float>,
-  #     "queueSize": <int>
-  #   }
-  # Note that unlike other methods, we only publish
-  # a single record at a time. Top level is a JSON
-  # object not a JSON array.
-  MethodPostDeviceData:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      ApiKeyRequired: true
-      HttpMethod: POST
+      HttpMethod: ANY
       AuthorizationType: NONE
       ResourceId: !Ref ResourceDeviceData
       RestApiId: !Ref RestAPI
@@ -221,49 +178,10 @@ Resources:
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
           - LambdaArn: !GetAtt LambdaFunction.Arn
 
-  # An HTTP GET method for querying device data from
-  # the database. Returns data of the form:
-  #   [
-  #     {
-  #       "id": <id>,
-  #       "time": <int>,
-  #       "sensorPollingPeriod": <int>,
-  #       "cloudUpdatePeriod": <int>,
-  #       "numSamplesPerPoll": <int>,
-  #       "deviceInfoUpdatePeriod": <int>,
-  #       "batteryPercent": <float>,
-  #       "queueSize": <int>
-  #     },
-  #     ....
-  #   ]
-  # Note that unlike POSTing to the same resource,
-  # GET returns a JSON array of data.
-  MethodGetDeviceData:
-    Type: AWS::ApiGateway::Method
-    Properties:
-      ApiKeyRequired: true
-      HttpMethod: GET
-      AuthorizationType: NONE
-      ResourceId: !Ref ResourceDeviceData
-      RestApiId: !Ref RestAPI
-      Integration:
-        Type: AWS_PROXY
-        IntegrationHttpMethod: GET
-        Uri: !Sub
-          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-          - LambdaArn: !GetAtt LambdaFunction.Arn
-
-  # An HTTP POST method for setting device
-  # config params. Expects data of the form:
-  #   {
-  #     "sensorPollingPeriod": <int>,
-  #     "cloudUpdatePeriod": <int>,
-  #     "numSamplesPerPoll": <int>,
-  #     "deviceInfoUpdatePeriod": <int>
-  #   }
-  # This will forward data to the Particle.io
-  # cloud for transmission to the device.
-  MethodPostDeviceConfig:
+  # An HTTP POST method for setting device config
+  # params. This will forward data to the Particle
+  # cloud to transmit to the device.
+  MethodDeviceConfig:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: true
@@ -292,7 +210,7 @@ Resources:
   # success with no content. That allows us
   # to check that we have a valid API key
   # and acts as our "login" step.
-  MethodPostLogin:
+  MethodLogin:
     Type: AWS::ApiGateway::Method
     Properties:
       ApiKeyRequired: true
