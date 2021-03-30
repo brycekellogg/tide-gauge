@@ -1,2 +1,5 @@
 tide-gauge.bin
 lambda.zip
+cloud/lambda-dir/
+*.tmp.json
+secrets.fish
