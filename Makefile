@@ -40,6 +40,7 @@ aws-deploy: cloud/lambda.zip cloud/cloud.yaml
 												  ParameterKey=DeviceID,ParameterValue=${PARTICLE_DEVICE} \
 												  ParameterKey=ParticleToken,ParameterValue=${PARTICLE_TOKEN} \
 												  ParameterKey=BucketName,ParameterValue=${AWS_BUCKET}
+	@aws cloudformation wait stack-update-complete --stack-name tide-gauge
 
 clean:
 	@rm -rf firmware/tide-gauge.bin cloud/lambda.zip cloud/lambda-dir
