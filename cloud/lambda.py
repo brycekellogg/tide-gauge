@@ -9,19 +9,11 @@
 # Author: Bryce Kellogg (bryce@kellogg.org)
 # Copyright: 2021 Bryce Kellogg
 # License: GPLv3
-"""
-Schema:
-
-
-
-"""
 import json
 import os
 from datetime import datetime
 from pprint import pprint
 import logging
-
-logging.basicConfig(level=logging.DEBUG)
 
 from schema import *
 from sqlalchemy import *
@@ -70,21 +62,28 @@ deviceData = Table('deviceData', meta,
                    Column('batteryPercent', Float),
                    Column('queueSize', Integer))
 
-# # engine = create_engine('sqlite:///test.db')
-# engine = create_engine('mysql+auroradataapi://:@/TideGaugeData', echo=True)
 engine = create_engine('s3sqlite:///tide-data.sqlite', echo=True)
-meta.create_all(engine)
+# meta.create_all(engine)
+
 
 def process(event, context):
+    """
+    The main handler for the lambda function. Extracts the needed data
+    from the HTTP event and calls one of the helper functions based on
+    the path and HTTP method. If there is no match, return an error.
+    """
     url = event['path']
     method = event['httpMethod']
     body = event['body']
+    queryStringParams = event['multiValueQueryStringParameters']
+
+    print(queryStringParams)
 
     # Call correct helper function based on path & method
     if url == '/sensor-data' and method == 'POST': return saveSensorData(body)
     if url == '/device-data' and method == 'POST': return saveDeviceData(body)
-    if url == '/sensor-data' and method == 'GET':  return readSensorData()
-    if url == '/device-data' and method == 'GET':  return readDeviceData()
+    if url == '/sensor-data' and method == 'GET':  return readSensorData(queryStringParams)
+    if url == '/device-data' and method == 'GET':  return readDeviceData(queryStringParams)
 
     # If we make it here, something is wrong
     return {
@@ -92,6 +91,55 @@ def process(event, context):
         'body': 'Bad Request'
     }
 
+
+def filter(table, params, eqFields=[], cmpFields=[]):
+    """
+    A helper function that filters a sqlAlchemy select call
+    based on HTTP querystring parameters. There are two types
+    of fields we can filter on: eqFields only support equality
+    testing, cmpFields support less than, greater then, etc.
+
+    The format of the queryparams must be:
+        {
+            '<fieldName>': [<value>, <value>, ...],  # for eqFields
+            '<fieldName_op>': [<value>],             # for cmpFields
+            ...
+        }
+    A result will be included if it satisfies all conditions in the
+    params dict. For eqParams, the field must equal any value supplied
+    in the list. For cmpParams, the following operators are supported:
+       - eq   the field must equal this value
+       - lt   the field must be less than this value
+       - gt   the field must be greater than this value
+       - lte  the field must be less than or equal to this value
+       - gte  the field must be greater than or equal to this value
+    Multiple ops may be used for a single field (like for testing a range).
+    """
+    query = table.select()
+
+    # Skip if there's no params
+    if params == None: return query
+
+    # Filter results with simple equality
+    for field in eqFields:
+        if field in params.keys():
+            print(f"field={field}, params={params[field]}")
+            query = query.where(table.c[field].in_(params[field]))
+
+    # Filter results with comparisons
+    for field in cmpFields:
+        for param in params.keys():
+            if field in param:
+                _, op = param.split('_')
+                print(f"field={field}, op={op}, params={params[param]}")
+                if op == 'eq':  query = query.where(table.c[field].in_(params[param]))
+                if op == 'lt':  query = query.where(table.c[field] < params[param][0])
+                if op == 'gt':  query = query.where(table.c[field] > params[param][0])
+                if op == 'lte': query = query.where(table.c[field] <= params[param][0])
+                if op == 'gte': query = query.where(table.c[field] >= params[param][0])
+
+    # Done filtering
+    return query
 
 
 def saveSensorData(body):
@@ -192,20 +240,35 @@ def saveDeviceData(body):
     return {'statusCode': 200, 'body': 'OK'}
 
 
-def readSensorData():
+def readSensorData(queryStringParams):
     """
-
+    A function for handling reading sensor data from the database. The results
+    are returned as a strong of JSON in the format:
         [
             {"id", <int>, "deviceID", <str>, "timestamp": <str>, "distance": <int>},
             {"id", <int>, "deviceID", <str>, "timestamp": <str>, "distance": <int>},
             ...
         ]
-
-
+    The request can be lmited using the HTTP query string. The following query
+    params are supported:
+      - id=<value>
+      - deviceID=<value>
+      - timestamp_eq=<value>
+      - timestamp_lt=<value>
+      - timestamp_gt=<value>
+      - timestamp_lte=<value>
+      - timestamp_gte=<value>
+    The id and deviceID params can be supplied multiple times to select all
+    rows that match any supplied param.
     """
+    # Select records based on filter
+    query = filter(sensorData, queryStringParams,
+                   eqFields=['id', 'deviceID'],
+                   cmpFields=['timestamp'])
 
     # Perform query on `sensorData` table in database
-    results = engine.connect().execute(sensorData.select())
+    results = engine.connect().execute(query)
+
 
     # Convert database result to JSON output format
     records = []
@@ -227,8 +290,10 @@ def readSensorData():
     }
 
 
-def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
+def readDeviceData(queryStringParams):
     """
+    A function for handling reading sensor data from the database. The results
+    are returned as a strong of JSON in the format:
          [
              {
                 "id": <int>,
@@ -243,9 +308,25 @@ def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
             },
              ...
           ]
+    The request can be lmited using the HTTP query string. The following query
+    params are supported:
+      - id=<value>
+      - deviceID=<value>
+      - timestamp_eq=<value>
+      - timestamp_lt=<value>
+      - timestamp_gt=<value>
+      - timestamp_lte=<value>
+      - timestamp_gte=<value>
+    The id and deviceID params can be supplied multiple times to select all
+    rows that match any supplied param.
     """
+    # Select records based on filter
+    query = filter(deviceData, queryStringParams,
+                   eqFields=['id', 'deviceID'],
+                   cmpFields=['timestamp'])
+
     # Perform query on `deviceData` table in database
-    results = engine.connect().execute(deviceData.select())
+    results = engine.connect().execute(query)
 
     # Convert database result to JSON output format
     records = []
