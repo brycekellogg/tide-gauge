@@ -11,11 +11,14 @@ firmware-flash: tide-gauge.bin
 firmware-ota: tide-gauge.bin
 	@particle flash --cloud tide-gauge-1 tide-gauge.bin
 
-
+# Update particle webhooks
 webhook-deploy: cloud/webhook-sensor-data.json cloud/webhook-device-data.json
-	@particle webhook create cloud/webhook-sensor-data.json
-	@particle webhook create cloud/webhook-device-data.json
-
+	@sed -e 's@AWS_APIKEY@'"${AWS_APIKEY}"'@' cloud/webhook-sensor-data.json > webhook-sensor-data.tmp.json
+	@sed -e 's@AWS_APIKEY@'"${AWS_APIKEY}"'@' cloud/webhook-device-data.json > webhook-device-data.tmp.json
+	@particle webhook delete all
+	@particle webhook create webhook-sensor-data.tmp.json
+	@particle webhook create cloud/webhook-device-data.tmp.json
+	@rm *.tmp.json
 
 clean:
 	rm -rf tide-gauge.bin

@@ -2,7 +2,7 @@
     "event": "device-data",
     "url": "https://api.warmbeachtides.org/device-data",
     "requestType": "POST",
-    "headers": {"x-api-key": "${AWS_APIKEY}"},
+    "headers": {"x-api-key": "AWS_APIKEY"},
     "json": {
         "id": {{{PARTICLE_DEVICE_ID}}},
         "sensorPollingPeriod": {{{sensorPollingPeriod}}},

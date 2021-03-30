@@ -2,6 +2,6 @@
     "event": "sensor-data",
     "url": "https://api.warmbeachtides.org/sensor-data",
     "requestType": "POST",
-    "headers": {"x-api-key": "${AWS_APIKEY}"},
+    "headers": {"x-api-key": "AWS_APIKEY"},
     "body": "{\"id\": \"{{{PARTICLE_DEVICE_ID}}}\", \"records\": {{{PARTICLE_EVENT_VALUE}}} }"
 }
