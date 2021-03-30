@@ -209,11 +209,11 @@ def readSensorData():
 
     # Convert database result to JSON output format
     records = []
-    for r in results:
-        recordID = r[0]
-        deviceID = r[1]
-        timestamp = r[2].isoformat()
-        distance = r[3]
+    for row in results:
+        recordID = row._mapping['id']
+        deviceID = row._mapping['deviceID']
+        timestamp = row._mapping['timestamp'].isoformat()
+        distance = row._mapping['distance']
         record = {'id': recordID,
                   'deviceID': deviceID,
                   'timestamp': timestamp,
@@ -249,16 +249,16 @@ def readDeviceData(databaseName='MudFlatsTideData', tableName='DeviceData'):
 
     # Convert database result to JSON output format
     records = []
-    for r in results:
-        recordID = r[0]
-        deviceID = r[1]
-        timestamp = r[2].isoformat()
-        sensorPollingPeriod = r[3]
-        cloudUpdatePeriod = r[4]
-        numSamplesPerPoll = r[5]
-        deviceInfoUpdatePeriod = r[6]
-        batteryPercent = r[7]
-        queueSize = r[8]
+    for row in results:
+        recordID = row._mapping['id']
+        deviceID = row._mapping['deviceID']
+        timestamp = row._mapping['timestamp'].isoformat()
+        sensorPollingPeriod = row._mapping['sensorPollingPeriod']
+        cloudUpdatePeriod = row._mapping['cloudUpdatePeriod']
+        numSamplesPerPoll = row._mapping['numSamplesPerPoll']
+        deviceInfoUpdatePeriod = row._mapping['deviceInfoUpdatePeriod']
+        batteryPercent = row._mapping['batteryPercent']
+        queueSize = row._mapping['queueSize']
 
         record = {'id': recordID,
                   'deviceID': deviceID,
