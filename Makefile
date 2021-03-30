@@ -1,9 +1,9 @@
 # Compile the firmware using the cloud compile
-tide-gauge.bin: firmware/tide-gauge.ino
-	@particle compile --target 2.0.0 --saveTo $@ boron
+firmware/tide-gauge.bin: firmware/tide-gauge.ino
+	@cd firmware && particle compile --target 2.0.0 --saveTo $(@F) boron
 
 # Flash the bin to the device over USB
-firmware-flash: tide-gauge.bin
+firmware-flash: firmware/tide-gauge.bin
 	@particle usb dfu
 	@particle flash --usb $?
 
@@ -21,4 +21,4 @@ webhook-deploy: cloud/webhook-sensor-data.json cloud/webhook-device-data.json
 	@rm *.tmp.json
 
 clean:
-	rm -rf tide-gauge.bin
+	rm -rf firmware/tide-gauge.bin
