@@ -12,6 +12,10 @@
  */
 #include <queue>
 
+// The pin used to enable a sensor reading. To
+// trigger a reading, hold low for at least 20 uS
+#define SENSOR_ENABLE_PIN   D11
+
 
 // Because the queue used to pass sensor records
 // allocates new records on the heap as they are
@@ -167,14 +171,37 @@ int functionConfig(String params) {
 
 
 /**
+ * Get a distance reading from the sensor.
  *
+ * This function triggers a sonar sensor reading,
+ * reads the resulting data over UART, parses the
+ * UART result into an integer (in mm) and pushes
+ * the data onto the back of the queue (if room).
  **/
 bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
     for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
+        delay(500);
         SensorRecord record;
 
         record.time = Time.now();
-        record.data = random(20, 765);
+
+        // Trigger a read
+        digitalWrite(SENSOR_ENABLE_PIN, HIGH);
+        delay(1);
+        digitalWrite(SENSOR_ENABLE_PIN, LOW);
+
+        // Get reading from UART
+        char buffer[5] = {0};
+        int j = 0;
+        char c = '\0';
+        while ((c = Serial1.read()) != '\r') {
+            if (c != 0xFF) {
+                buffer[j++] = c;
+            }
+        }
+
+        // Parse UART and save to record
+        sscanf(buffer, "R%d", &record.data);
 
         // Save to queue if we have room
         if (recordQueue.size() < MAX_RECORDS) {
@@ -323,6 +350,16 @@ bool timeSync() {
     return false;
 }
 
+/**
+ * A setup function that runs early. This allows
+ * us to set the sensor control pin low early to
+ * avoid unneeded sensor reads.
+**/
+void setPins() {
+    pinMode(SENSOR_ENABLE_PIN, OUTPUT);
+    digitalWrite(SENSOR_ENABLE_PIN, LOW);
+}
+STARTUP(setPins());
 
 /**
  * Setup function that gets called once at start up. We
@@ -333,6 +370,9 @@ bool timeSync() {
 void setup() {
     // Register the config function
     Particle.function("config", functionConfig);
+
+    // Initialize serial library
+    Serial1.begin(9600);
 
     // Start timers
     timeSyncTimer.start();
