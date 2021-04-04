@@ -132,11 +132,18 @@ def filter(table, params, eqFields=[], cmpFields=[]):
             if field in param:
                 _, op = param.split('_')
                 print(f"field={field}, op={op}, params={params[param]}")
-                if op == 'eq':  query = query.where(table.c[field].in_(params[param]))
-                if op == 'lt':  query = query.where(table.c[field] < params[param][0])
-                if op == 'gt':  query = query.where(table.c[field] > params[param][0])
-                if op == 'lte': query = query.where(table.c[field] <= params[param][0])
-                if op == 'gte': query = query.where(table.c[field] >= params[param][0])
+                if field != 'timestamp':
+                    if op == 'eq':  query = query.where(table.c[field].in_(params[param]))
+                    if op == 'lt':  query = query.where(table.c[field] < params[param][0])
+                    if op == 'gt':  query = query.where(table.c[field] > params[param][0])
+                    if op == 'lte': query = query.where(table.c[field] <= params[param][0])
+                    if op == 'gte': query = query.where(table.c[field] >= params[param][0])
+                else:
+                    if op == 'eq':  query = query.where(table.c[field].in_(func.datetime(params[param])))
+                    if op == 'lt':  query = query.where(table.c[field] < func.datetime(params[param][0]))
+                    if op == 'gt':  query = query.where(table.c[field] > func.datetime(params[param][0]))
+                    if op == 'lte': query = query.where(table.c[field] <= func.datetime(params[param][0]))
+                    if op == 'gte': query = query.where(table.c[field] >= func.datetime(params[param][0]))
 
     # Done filtering
     return query
