@@ -123,8 +123,10 @@ def filter(table, params, eqFields=[], cmpFields=[]):
     # Filter results with simple equality
     for field in eqFields:
         if field in params.keys():
-            print(f"field={field}, params={params[field]}")
-            query = query.where(table.c[field].in_(params[field]))
+            if field == 'limit':
+                query = query.limit(int(params[field][0]))
+            else:
+                query = query.where(table.c[field].in_(params[field]))
 
     # Filter results with comparisons
     for field in cmpFields:
@@ -144,6 +146,11 @@ def filter(table, params, eqFields=[], cmpFields=[]):
                     if op == 'gt':  query = query.where(table.c[field] > func.datetime(params[param][0]))
                     if op == 'lte': query = query.where(table.c[field] <= func.datetime(params[param][0]))
                     if op == 'gte': query = query.where(table.c[field] >= func.datetime(params[param][0]))
+
+    # Always order by timestamp, but to make limiting
+    # work how we want, order opposite the way we want
+    # to return results.
+    query = query.order_by(table.c.timestamp.desc())
 
     # Done filtering
     return query
@@ -270,7 +277,7 @@ def readSensorData(queryStringParams):
     """
     # Select records based on filter
     query = filter(sensorData, queryStringParams,
-                   eqFields=['id', 'deviceID'],
+                   eqFields=['id', 'deviceID', 'limit'],
                    cmpFields=['timestamp'])
 
     # Perform query on `sensorData` table in database
@@ -289,6 +296,10 @@ def readSensorData(queryStringParams):
                   'timestamp': timestamp,
                   'distance': distance}
         records.append(record)
+
+    # We want to return results where the oldest
+    # records are at the lowest indices.
+    records.reverse()
 
     # Return data
     return {
@@ -329,7 +340,7 @@ def readDeviceData(queryStringParams):
     """
     # Select records based on filter
     query = filter(deviceData, queryStringParams,
-                   eqFields=['id', 'deviceID'],
+                   eqFields=['id', 'deviceID', 'limit'],
                    cmpFields=['timestamp'])
 
     # Perform query on `deviceData` table in database
@@ -358,6 +369,10 @@ def readDeviceData(queryStringParams):
                   'batteryPercent': batteryPercent,
                   'queueSize': queueSize}
         records.append(record)
+
+    # We want to return results where the oldest
+    # records are at the lowest indices.
+    records.reverse()
 
     # Return data
     return {
