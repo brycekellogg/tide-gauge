@@ -31,7 +31,6 @@ cloud/lambda.zip: cloud/lambda.py cloud/requirements.txt
 # Upload everything to S3 and update stack
 LAMBDA_SOURCE:=lambda-$(shell uuidgen).zip
 aws-deploy: cloud/lambda.zip cloud/cloud.yaml
-	@aws s3 rm s3://${AWS_BUCKET}/ --recursive --exclude "*" --include "*.zip"
 	@aws s3 cp cloud/lambda.zip s3://${AWS_BUCKET}/${LAMBDA_SOURCE}
 	@aws cloudformation update-stack --stack-name tide-gauge \
 									 --template-body file://cloud/cloud.yaml \
