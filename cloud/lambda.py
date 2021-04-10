@@ -84,6 +84,8 @@ def process(event, context):
     if url == '/device-data' and method == 'POST': return saveDeviceData(body)
     if url == '/sensor-data' and method == 'GET':  return readSensorData(queryStringParams)
     if url == '/device-data' and method == 'GET':  return readDeviceData(queryStringParams)
+    if url == '/sensor-data' and method == 'DELETE': return deleteSensorData(queryStringParams)
+    if url == '/device-data' and method == 'DELETE': return deleteDeviceData(queryStringParams)
 
     # If we make it here, something is wrong
     return {
@@ -92,7 +94,7 @@ def process(event, context):
     }
 
 
-def filter(table, params, eqFields=[], cmpFields=[]):
+def filter(table, query, params, eqFields=[], cmpFields=[]):
     """
     A helper function that filters a sqlAlchemy select call
     based on HTTP querystring parameters. There are two types
@@ -115,8 +117,6 @@ def filter(table, params, eqFields=[], cmpFields=[]):
        - gte  the field must be greater than or equal to this value
     Multiple ops may be used for a single field (like for testing a range).
     """
-    query = table.select()
-
     # Skip if there's no params
     if params == None: return query
 
@@ -146,11 +146,6 @@ def filter(table, params, eqFields=[], cmpFields=[]):
                     if op == 'gt':  query = query.where(table.c[field] > func.datetime(params[param][0]))
                     if op == 'lte': query = query.where(table.c[field] <= func.datetime(params[param][0]))
                     if op == 'gte': query = query.where(table.c[field] >= func.datetime(params[param][0]))
-
-    # Always order by timestamp, but to make limiting
-    # work how we want, order opposite the way we want
-    # to return results.
-    query = query.order_by(table.c.timestamp.desc())
 
     # Done filtering
     return query
@@ -263,7 +258,7 @@ def readSensorData(queryStringParams):
             {"id", <int>, "deviceID", <str>, "timestamp": <str>, "distance": <int>},
             ...
         ]
-    The request can be lmited using the HTTP query string. The following query
+    The request can be limited using the HTTP query string. The following query
     params are supported:
       - id=<value>
       - deviceID=<value>
@@ -275,10 +270,18 @@ def readSensorData(queryStringParams):
     The id and deviceID params can be supplied multiple times to select all
     rows that match any supplied param.
     """
+    query = sensorData.select()
+
     # Select records based on filter
-    query = filter(sensorData, queryStringParams,
+    query = filter(sensorData, query, queryStringParams,
                    eqFields=['id', 'deviceID', 'limit'],
                    cmpFields=['timestamp'])
+
+    # Always order by timestamp, but to make limiting
+    # work how we want, order opposite the way we want
+    # to return results.
+    query = query.order_by(sensorData.c.timestamp.desc())
+
 
     # Perform query on `sensorData` table in database
     results = engine.connect().execute(query)
@@ -326,7 +329,7 @@ def readDeviceData(queryStringParams):
             },
              ...
           ]
-    The request can be lmited using the HTTP query string. The following query
+    The request can be limited using the HTTP query string. The following query
     params are supported:
       - id=<value>
       - deviceID=<value>
@@ -338,10 +341,18 @@ def readDeviceData(queryStringParams):
     The id and deviceID params can be supplied multiple times to select all
     rows that match any supplied param.
     """
+    query = deviceData.select()
+
     # Select records based on filter
-    query = filter(deviceData, queryStringParams,
+    query = filter(deviceData, query, queryStringParams,
                    eqFields=['id', 'deviceID', 'limit'],
                    cmpFields=['timestamp'])
+
+    # Always order by timestamp, but to make limiting
+    # work how we want, order opposite the way we want
+    # to return results.
+    query = query.order_by(deviceData.c.timestamp.desc())
+
 
     # Perform query on `deviceData` table in database
     results = engine.connect().execute(query)
@@ -380,3 +391,53 @@ def readDeviceData(queryStringParams):
         'body': json.dumps(records)
     }
 
+
+def deleteSensorData(queryStringParams):
+    """
+    A function for handling deleting sensor data from the database.
+    The request must be limited using the HTTP query string with the `id`
+    parameter. The id params can be supplied multiple times to delete all
+    rows that match any supplied id.
+    """
+
+    # Must supply id param
+    if queryStringParams is None or 'id' not in queryStringParams.keys():
+        return {
+            'statusCode': 400,
+            'body': 'Bad Request: missing id'
+        }
+
+    # Build query
+    query = sensorData.delete()
+    query = filter(sensorData, query, queryStringParams, eqFields=['id'])
+
+    # Perform query on `sensorData` table in database
+    results = engine.connect().execute(query)
+
+    # Query was a success, return success code
+    return {'statusCode': 200, 'body': 'OK'}
+
+
+def deleteDeviceData(queryStringParams):
+    """
+    A function for handling deleting device data from the database.
+    The request must be limited using the HTTP query string with the `id`
+    parameter. The id params can be supplied multiple times to delete all
+    rows that match any supplied id.
+    """
+    # Must supply id param
+    if queryStringParams is None or 'id' not in queryStringParams.keys():
+        return {
+            'statusCode': 400,
+            'body': 'Bad Request: missing id'
+        }
+
+    # Build query
+    query = deviceData.delete()
+    query = filter(deviceData, query, queryStringParams, eqFields=['id'])
+
+    # Perform query on `deviceData` table in database
+    results = engine.connect().execute(query)
+
+    # Query was a success, return success code
+    return {'statusCode': 200, 'body': 'OK'}
