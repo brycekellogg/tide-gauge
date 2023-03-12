@@ -11,11 +11,18 @@
  * License: GPLv3
  */
 #include <queue>
+#include "Adafruit_LC709203F.h"
 
 // The pin used to enable a sensor reading. To
 // trigger a reading, hold low for at least 20 uS
 #define SENSOR_ENABLE_PIN   D11
+#define SEMSOR_GND_PIN      D13
+#define SENSOR_VCC_PIN      D12
 
+//
+//
+#define BATTERY_MONITOR_GND_PIN   D2
+#define BATTERY_MONITOR_VCC_PIN   D3
 
 // Because the queue used to pass sensor records
 // allocates new records on the heap as they are
@@ -43,7 +50,7 @@
 
 
 // The Particle cloud has a limit of 1 publish per second. In
-// perder to not get throttled by publishing too fast, we set
+// order to not get throttled by publishing too fast, we set
 // a limit on the timer period for cloud update timers. Any calls
 // to the config function with a cloud update timer period smaller
 // than this value (in milliseconds) will be replaced by this value.
@@ -58,8 +65,8 @@
 
 // A structure for saving sensor records. This
 // is used to pass data into and out of the queue,
-// and therefore between between the sensing
-// function and the cloud update function.
+// and therefore between the sensing function and
+// the cloud update function.
 struct SensorRecord {
     uint32_t time;
     uint16_t data;
@@ -68,10 +75,10 @@ struct SensorRecord {
 
 // Config params
 // Periods are in milliseconds
-int sensorPollingPeriod = 20*1000;
-int cloudUpdatePeriod = 30*1000;
-int deviceInfoUpdatePeriod = 5*60*1000;
-unsigned int numSamplesPerPoll = 5;
+int sensorPollingPeriod = 5*1000; //20*20*1000;
+int cloudUpdatePeriod = 30*1000; //20*30*1000;
+int deviceInfoUpdatePeriod = 1*30*1000;
+unsigned int numSamplesPerPoll = 1;
 
 
 // Flags
@@ -97,6 +104,7 @@ Timer deviceInfoUpdateTimer(deviceInfoUpdatePeriod, onDeviceInfoUpdateTimer);
 
 SerialLogHandler logHandler;
 
+Adafruit_LC709203F batteryMonitor;
 
 /**
  * A Particle Function for setting device config parameters.
@@ -191,14 +199,17 @@ bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
         digitalWrite(SENSOR_ENABLE_PIN, LOW);
 
         // Get reading from UART
-        char buffer[5] = {0};
-        int j = 0;
-        char c = '\0';
-        while ((c = Serial1.read()) != '\r') {
-            if (c != 0xFF) {
-                buffer[j++] = c;
-            }
-        }
+        char buffer[5] = "R012";  // Fake Data
+        /*char buffer[5] = {0};*/
+        /*int j = 0;*/
+        /*char c = '\0';*/
+        /*while ((c = Serial1.read()) != '\r') {*/
+        /*    if (c != 0xFF) {*/
+        /*        buffer[j++] = c;*/
+        /*    }*/
+        /*}*/
+
+        Log.info("Buffer Contents: %.5s", buffer);
 
         // Parse UART and save to record
         sscanf(buffer, "R%d", &record.data);
@@ -228,6 +239,7 @@ bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
  **/
 bool cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 
+    Log.info("Begin Cloud Update");
     static time_t lastPublish = 0;
     static char buff[MAX_PUBLISH_SIZE];
 
@@ -256,7 +268,7 @@ bool cloudUpdate(std::queue<SensorRecord>& recordQueue) {
         // of the JSON writer library.
         json.beginObject();
         json.name("time").value(String(record.time));
-        json.name("data").value(record.data);
+        json.name("dist").value(record.data);
         json.endObject();
 
         // Save info about JSON progress
@@ -306,9 +318,10 @@ bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
     static char buff[MAX_PUBLISH_SIZE];
 
     // Get values that need measuring
-    float batteryPercent = System.batteryCharge();
+    float batteryPercent = batteryMonitor.cellPercent();
     int queueSize = recordQueue.size();
     size_t timestamp = Time.now();
+    String batteryStateStr;
 
     // Saving as JSON object
     JSONBufferWriter json(buff, sizeof(buff)-1);
@@ -357,7 +370,15 @@ bool timeSync() {
 **/
 void setPins() {
     pinMode(SENSOR_ENABLE_PIN, OUTPUT);
+    pinMode(BATTERY_MONITOR_GND_PIN, OUTPUT);
+    pinMode(BATTERY_MONITOR_VCC_PIN, OUTPUT);
+    pinMode(SEMSOR_GND_PIN, OUTPUT);
+    pinMode(SENSOR_VCC_PIN, OUTPUT);
     digitalWrite(SENSOR_ENABLE_PIN, LOW);
+    digitalWrite(BATTERY_MONITOR_GND_PIN, LOW);
+    digitalWrite(BATTERY_MONITOR_VCC_PIN, HIGH);
+    digitalWrite(SEMSOR_GND_PIN, LOW);
+    digitalWrite(SENSOR_VCC_PIN, HIGH);
 }
 STARTUP(setPins());
 
@@ -368,13 +389,19 @@ STARTUP(setPins());
  * all the timers with default timeout values.
  **/
 void setup() {
+
     // Register the config function
     Particle.function("config", functionConfig);
 
     // Initialize serial library
     Serial1.begin(9600);
 
+    // Initialize battery monitor
+    batteryMonitor.begin();
+    batteryMonitor.setPackSize(LC709203F_APA_1000MAH);
+
     // Start timers
+    Log.info("Starting Timers");
     timeSyncTimer.start();
     sensorPollingTimer.start();
     cloudUpdateTimer.start();

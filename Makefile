@@ -8,8 +8,8 @@ firmware-flash: firmware/tide-gauge.bin
 	@particle flash --usb $?
 
 # Program the device via a cloud OTA
-firmware-ota: tide-gauge.bin
-	@particle flash --cloud tide-gauge-1 tide-gauge.bin
+firmware-ota: firmware/tide-gauge.bin
+	@particle flash --cloud tide-gauge-1 $?
 
 # Update particle webhooks
 webhook-deploy: cloud/webhook-sensor-data.json cloud/webhook-device-data.json
@@ -30,9 +30,9 @@ cloud/lambda.zip: cloud/lambda.py cloud/requirements.txt
 
 # Upload everything to S3 and update stack
 LAMBDA_SOURCE:=lambda-$(shell uuidgen).zip
-aws-deploy: cloud/lambda.zip cloud/cloud.yaml
-	@aws s3 cp cloud/lambda.zip s3://${AWS_BUCKET}/${LAMBDA_SOURCE}
-	@aws cloudformation update-stack --stack-name tide-gauge \
+aws-deploy: cloud/cloud.yaml
+	# @aws s3 cp cloud/lambda.zip s3://${AWS_BUCKET}/${LAMBDA_SOURCE}
+	@aws cloudformation create-stack --stack-name tide-gauge \
 									 --template-body file://cloud/cloud.yaml \
 									 --capabilities CAPABILITY_IAM \
 									 --parameters ParameterKey=LambdaSource,ParameterValue=${LAMBDA_SOURCE} \

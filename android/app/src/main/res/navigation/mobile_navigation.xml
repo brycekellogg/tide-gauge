@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- This defines the navigation menu. Each element represents an item
+     in the navigation menu, provides the string to display, and
+     provides a mapping to which fragment to display when clicked. -->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@+id/nav_home">
+
+    <fragment
+        android:id="@+id/nav_home"
+        android:name="org.warmbeachtides.tidegauge.ui.HomeFragment"
+        android:label="@string/menu_home"
+        tools:layout="@layout/fragment_page_home" />
+
+    <fragment
+        android:id="@+id/nav_gallery"
+        android:name="org.warmbeachtides.tidegauge.ui.TideChartPageFragment"
+        android:label="@string/menu_tide_graph"
+        tools:layout="@layout/fragment_page_tidechart" />
+
+    <fragment
+        android:id="@+id/nav_slideshow"
+        android:name="org.warmbeachtides.tidegauge.ui.DeviceConfigFragment"
+        android:label="@string/menu_device_config"
+        tools:layout="@layout/fragment_page_deviceconfig" />
+</navigation>

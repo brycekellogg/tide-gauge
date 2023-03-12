@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.HomeFragment">
+
+    <TextView
+        android:id="@+id/waterLevelTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="128dp"
+        android:text="Water Level"
+        android:textAllCaps="false"
+        android:textSize="48sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/waterLevel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="11 ft"
+        android:textSize="36sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/waterLevelTitle" />
+
+    <TextView
+        android:id="@+id/deviceInfoTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="32dp"
+        android:layout_marginLeft="32dp"
+        android:layout_marginBottom="8dp"
+        android:text="Device Details"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintBottom_toTopOf="@+id/deviceInfoBattery"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:id="@+id/deviceInfoBattery"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Bettery: 44%"
+        app:layout_constraintBottom_toTopOf="@+id/deviceInfoQueueSize"
+        app:layout_constraintStart_toStartOf="@+id/deviceInfoTitle" />
+
+    <TextView
+        android:id="@+id/deviceInfoQueueSize"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Queue Size: 12"
+        app:layout_constraintBottom_toTopOf="@+id/deviceInfoUpdateInterval"
+        app:layout_constraintStart_toStartOf="@+id/deviceInfoBattery" />
+
+    <TextView
+        android:id="@+id/deviceInfoUpdateInterval"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Update Interval: 30 s"
+        app:layout_constraintBottom_toTopOf="@+id/deviceInfoSensorInterval"
+        app:layout_constraintStart_toStartOf="@+id/deviceInfoQueueSize" />
+
+    <TextView
+        android:id="@+id/deviceInfoSensorInterval"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="32dp"
+        android:text="Sensor Interval: 10 s"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="@+id/deviceInfoUpdateInterval" />
+</androidx.constraintlayout.widget.ConstraintLayout>
