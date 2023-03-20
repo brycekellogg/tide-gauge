@@ -1,0 +1,51 @@
+#
+#
+# +-------------+       +-------------+       +--------+       +----------+
+# |             |       |             |       |        |       |          |
+# | Particle.io |<----->| API Gateway |<----->| Lambda |<----->| DynamoDB |
+# |             |       |             |       |        |       |          |
+# +-------------+       +-------------+       +--------+       +----------+
+#       ^                       ^
+#       |                      |
+#       |                      |
+#       |                      |
+#       v                      v
+#   +--------+             +--------+
+#   | Sensor |             | Client |
+#   +--------+             +--------+
+#
+#
+#
+#
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Parameters:
+
+  # The source for each substack template is a URL
+  # pointing to a resource on AWS S3. We pass in the
+  # actual URLs via these CloudFormation parameters.
+  databaseTemplateURL:   {Type: String}
+  apiGatewayTemplateURL: {Type: String}
+  lambdaTemplateURL:     {Type: String}
+
+Resources:
+
+  # TODO: ????
+  StackDatabase:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: {"Ref": "databaseTemplateURL"}
