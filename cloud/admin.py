@@ -23,6 +23,7 @@
 #
 import argparse
 from admin import *
+from lambdafunction import *
 
 DEFAULT_STACKNAME = 'tide-guage'
 DEFAULT_REGION = 'us-west-2'
@@ -32,28 +33,68 @@ if __name__ == '__main__':
     argsParser = argparse.ArgumentParser()
     subParser = argsParser.add_subparsers()
 
-    # The aws-deploy command
-    parser_awsDeploy = subParser.add_parser('aws-deploy', help="Deploy AWS CloudFormation stack")
-    parser_awsDeploy.add_argument('--name', default=DEFAULT_STACKNAME)
-    parser_awsDeploy.add_argument('--region', default=DEFAULT_REGION)
-    parser_awsDeploy.set_defaults(func=command_awsDeploy)
+    # The stack-deploy command
+    parser_stackDeploy = subParser.add_parser('stack-deploy', help="Deploy AWS CloudFormation stack")
+    parser_stackDeploy.set_defaults(func=command_stackDeploy)
+    parser_stackDeploy.add_argument('--name', default=DEFAULT_STACKNAME)
+    parser_stackDeploy.add_argument('--region', default=DEFAULT_REGION)
 
-    # The aws-delete command
-    parser_awsDelete = subParser.add_parser('aws-delete', help="Delete AWS CloudFormation stack")
-    parser_awsDelete.add_argument('--name', default=DEFAULT_STACKNAME)
-    parser_awsDelete.set_defaults(func=command_awsDelete)
+    # The stack-delete command
+    parser_stackDelete = subParser.add_parser('stack-delete', help="Delete AWS CloudFormation stack")
+    parser_stackDelete.set_defaults(func=command_stackDelete)
+    parser_stackDelete.add_argument('--name', default=DEFAULT_STACKNAME)
 
-    # The aws-update command
-    parser_awsUpdate = subParser.add_parser('aws-update')
+    # The stack-update command
+    parser_stackUpdate = subParser.add_parser('stack-update')
+    parser_stackUpdate.add_argument('--name', default=DEFAULT_STACKNAME)
+    parser_stackUpdate.add_argument('--region', default=DEFAULT_REGION)
+
+    # The db-data command
+    parser_dbData = subParser.add_parser('db-data', help="Manage the data table")
+    parser_dbData.set_defaults(func=command_dbData)
+    parser_dbData.add_argument('--name', default=DEFAULT_STACKNAME)
+    parser_dbData.add_argument('--device', required=True)
+    parser_dbData.add_argument('--timestamp')
+    parser_dbData.add_argument('--limit', type=int)  # used in GET only
+    parser_dbData.add_argument('--data')             # used in POST only
+    # TODO: make mutually exclusive
+    parser_dbData.add_argument('--post', action='store_true')
+    parser_dbData.add_argument('--get', action='store_true')
+    parser_dbData.add_argument('--delete', action='store_true')
+
+    # The db-config command
+    parser_dbConfig = subParser.add_parser('db-config', help="Manage the config table")
+    parser_dbConfig.set_defaults(func=command_dbConfig)
+    parser_dbConfig.add_argument('--name', default=DEFAULT_STACKNAME)
+    parser_dbConfig.add_argument('--device')
+    parser_dbConfig.add_argument('--data')             # used in POST only
+    parser_dbConfig.add_argument('--post', action='store_true')
+    parser_dbConfig.add_argument('--get', action='store_true')
+    parser_dbConfig.add_argument('--delete', action='store_true')
+
+    # TODO: The lambda-invoke command
+    parser_lambdaInvoke = subParser.add_parser('lambda-invoke', help="Call the lambda function")
+    parser_lambdaInvoke.set_defaults(func=command_lambdaInvoke)
+    parser_lambdaInvoke.add_argument('--name', default=DEFAULT_STACKNAME)
+    parser_lambdaInvoke.add_argument('--device')
+    parser_lambdaInvoke.add_argument('--timestamp')
+    parser_lambdaInvoke.add_argument('--limit', type=int)  # used in GET only
+    parser_lambdaInvoke.add_argument('--data')             # used in POST only
+    # TODO: make mutually exclusive
+    parser_lambdaInvoke.add_argument('--post', action='store_true')
+    parser_lambdaInvoke.add_argument('--get', action='store_true')
+    parser_lambdaInvoke.add_argument('--config', action='store_true')
 
     # The aws-apikey command
     parser_awsApikey = subParser.add_parser('aws-apikey', help="Manage AWS API Keys")
+    parser_awsApikey.set_defaults(func=command_awsApikey)
     parser_awsApikey.add_argument('--name', default=DEFAULT_STACKNAME)
     group_awsApikey = parser_awsApikey.add_mutually_exclusive_group()
     group_awsApikey.add_argument('--list', action='store_true')
     group_awsApikey.add_argument('--new',  action='store')
     group_awsApikey.add_argument('--remove',  action='store')
-    parser_awsApikey.set_defaults(func=command_awsApikey)
+
+
 
     args = argsParser.parse_args()
     args.func(args)

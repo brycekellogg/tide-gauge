@@ -9,6 +9,5 @@
 # Author: Bryce Kellogg (bryce@kellogg.org)
 # Copyright: 2023 Bryce Kellogg
 # License: GPLv3
-from .stack import *
-from .api import *
 from .lambdafunction import *
+from .commands import *

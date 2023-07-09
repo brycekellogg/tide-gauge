@@ -46,13 +46,16 @@
 #
 # The values and formats of non-key attributes are defined elsewhere.
 #
+Parameters:
+  stackName: {Type: String}
+
 Resources:
 
   DataTable:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: "PAY_PER_REQUEST"
-      TableName: !Join ['-', [!Ref AWS::StackName, 'data-table']]
+      TableName: !Join ['-', [!Ref stackName, 'data-table']]
       AttributeDefinitions:
         - {AttributeName: "devicename", AttributeType: "S"}
         - {AttributeName: "timestamp", AttributeType: "N"}
@@ -64,7 +67,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: "PAY_PER_REQUEST"
-      TableName: !Join ['-', [!Ref AWS::StackName, 'config-table']]
+      TableName: !Join ['-', [!Ref stackName, 'config-table']]
       AttributeDefinitions:
         - {AttributeName: "devicename", AttributeType: "S"}
       KeySchema:

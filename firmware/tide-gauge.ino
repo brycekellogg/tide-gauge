@@ -15,9 +15,10 @@
 
 // The pin used to enable a sensor reading. To
 // trigger a reading, hold low for at least 20 uS
-#define SENSOR_ENABLE_PIN   D11
-#define SEMSOR_GND_PIN      D13
-#define SENSOR_VCC_PIN      D12
+#define SENSOR_ENABLE_PIN   D11  // Yellow wire
+#define SEMSOR_GND_PIN      D13  // Black wire
+#define SENSOR_VCC_PIN      D12  // Red wire
+                                 // Brown wire -> UART RX
 
 //
 //
@@ -63,6 +64,16 @@
 #define TIME_SYNC_TIMER_PERIOD 23*60*60*1000
 
 
+/**
+ * State of the state machine
+ *
+ */
+enum {
+    UNINITIALIZED,
+} state = UNINITIALIZED;
+
+
+
 // A structure for saving sensor records. This
 // is used to pass data into and out of the queue,
 // and therefore between the sensing function and
@@ -76,8 +87,8 @@ struct SensorRecord {
 // Config params
 // Periods are in milliseconds
 int sensorPollingPeriod = 5*1000; //20*20*1000;
-int cloudUpdatePeriod = 30*1000; //20*30*1000;
-int deviceInfoUpdatePeriod = 1*30*1000;
+int cloudUpdatePeriod = 5*60*1000; //20*30*1000;
+int deviceInfoUpdatePeriod = 1*60*1000;
 unsigned int numSamplesPerPoll = 1;
 
 
@@ -363,6 +374,7 @@ bool timeSync() {
     return false;
 }
 
+
 /**
  * A setup function that runs early. This allows
  * us to set the sensor control pin low early to
@@ -381,6 +393,7 @@ void setPins() {
     digitalWrite(SENSOR_VCC_PIN, HIGH);
 }
 STARTUP(setPins());
+
 
 /**
  * Setup function that gets called once at start up. We

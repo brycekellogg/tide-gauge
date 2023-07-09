@@ -22,7 +22,7 @@ from pprint import pprint
 from botocore.exceptions import ClientError
 
 
-def command_awsDeploy(args):
+def command_stackDeploy(args):
     """
     The function for creating/deploying the CloudFormation stack.
 
@@ -47,7 +47,8 @@ def command_awsDeploy(args):
     databaseTemplateFilename = 'templates/template-db.yaml'
     apiGatewayTemplateFilename = 'templates/template-api.yaml'
     lambdaTemplateFilename = 'templates/template-lambda.yaml'
-    lambdaFilename = 'lambda.py'
+    lambdaFilename = 'lambdafunction/lambdafunction.py'
+    lambdaArcname = 'lambdafunction.py'
     lambdaZipFilename = 'lambda.zip'
 
     # Pre-declare boto3 clients needed to deploy
@@ -78,7 +79,7 @@ def command_awsDeploy(args):
 
     # Zip the python file of the lambda function into an in-memory zipfile
     zipBuffer = io.BytesIO()
-    with ZipFile(zipBuffer, mode='a') as archive: archive.write(lambdaFilename)
+    with ZipFile(zipBuffer, mode='a') as archive: archive.write(lambdaFilename, arcname=lambdaArcname)
 
     # Validate the template itself via CloudFormation. If we don't
     # get an exception here, it means the tamplate is valid.
@@ -117,6 +118,8 @@ def command_awsDeploy(args):
         {'ParameterKey': 'databaseTemplateURL',   'ParameterValue': databaseTemplateURL},
         {'ParameterKey': 'apiGatewayTemplateURL', 'ParameterValue': apiGatewayTemplateURL},
         {'ParameterKey': 'lambdaTemplateURL',     'ParameterValue': lambdaTemplateURL},
+        {'ParameterKey': 'bucketName',  'ParameterValue': bucketName},
+        {'ParameterKey': 'zipfileName', 'ParameterValue': lambdaZipFilename},
     ]
     cloudformation.create_stack(
             StackName=stackName,
@@ -146,11 +149,11 @@ def command_awsDeploy(args):
         sys.exit(f"Error: unexpected error cleaning up bucket {e}")
 
 
-def update(args):
+def command_stackUpdate(args):
     pass
 
 
-def command_awsDelete(args):
+def command_stackDelete(args):
     """
     Deletes a CloudFormation stack.
 
