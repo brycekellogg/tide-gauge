@@ -3,3 +3,5 @@ lambda.zip
 cloud/lambda-dir/
 *.tmp.json
 secrets.fish
+**/__pycache__/
+tags
