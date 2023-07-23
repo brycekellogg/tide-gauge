@@ -13,6 +13,8 @@
 #include <queue>
 #include "Adafruit_LC709203F.h"
 
+#define DEVICE_NAME  "tide-guage-1"
+
 // The pin used to enable a sensor reading. To
 // trigger a reading, hold low for at least 20 uS
 #define SENSOR_ENABLE_PIN   D11  // Yellow wire
@@ -40,7 +42,7 @@
 // only support 32-bit unsigned ints, giving a maximum of 10 digits.
 // For sensor values, the data is in mm and we will not get values
 // from the sensor above 10 m (9999 mm), giving a max of 4 digits.
-#define MAX_BYTES_PER_RECORD sizeof(R"({"time": 4294967295, "data": 9999},)")
+#define MAX_BYTES_PER_RECORD sizeof(R"([4294967295,{"distance":9999,"queue-size":999,"battery-percent":100.0}],)") + sizeof("]}")
 
 
 // The maximum size of data that we can publish is
@@ -68,9 +70,9 @@
  * State of the state machine
  *
  */
-enum {
-    UNINITIALIZED,
-} state = UNINITIALIZED;
+// enum {
+//     UNINITIALIZED,
+// } state = UNINITIALIZED;
 
 
 
@@ -78,17 +80,18 @@ enum {
 // is used to pass data into and out of the queue,
 // and therefore between the sensing function and
 // the cloud update function.
-struct SensorRecord {
-    uint32_t time;
-    uint16_t data;
+struct DataRecord {
+    uint32_t timestamp;
+    uint16_t distance;  // TODO: make a list of samples
+    uint8_t  queuesize;
+    float    batterypercent;
 };
 
 
 // Config params
 // Periods are in milliseconds
-int sensorPollingPeriod = 5*1000; //20*20*1000;
-int cloudUpdatePeriod = 5*60*1000; //20*30*1000;
-int deviceInfoUpdatePeriod = 1*60*1000;
+int sensorPollingPeriod = 30*1000; // 30 seconds
+int cloudUpdatePeriod = 5*60*1000; // 5 min
 unsigned int numSamplesPerPoll = 1;
 
 
@@ -103,90 +106,17 @@ bool doDeviceInfoUpdate = false;
 void onTimeSyncTimer() { doTimeSync = true; }
 void onSensorPollingTimer() { doSensorPoll = true; }
 void onCloudUpdateTimer() { doCloudUpdate = true; }
-void onDeviceInfoUpdateTimer() { doDeviceInfoUpdate = true; }
 
 
 // Software timers
 Timer timeSyncTimer(TIME_SYNC_TIMER_PERIOD, onTimeSyncTimer);
 Timer sensorPollingTimer(sensorPollingPeriod, onSensorPollingTimer);
 Timer cloudUpdateTimer(cloudUpdatePeriod, onCloudUpdateTimer);
-Timer deviceInfoUpdateTimer(deviceInfoUpdatePeriod, onDeviceInfoUpdateTimer);
 
 
 SerialLogHandler logHandler;
 
 Adafruit_LC709203F batteryMonitor;
-
-/**
- * A Particle Function for setting device config parameters.
- *
- * This is how we configure the device and the various config
- * parameters for it defined above. The function takes a single
- * string representing a JSON object where each key is a congfig
- * variable name and the corresponding value is the desired int
- * value of the config parameter. Only the config params that
- * you want to update need to be specified in the JSON object.
- * To stop a certain timer, pass null as the config param value.
- *
- *      '{"sensorPollingPeriod": <int>,
- *        "cloudUpdatePeriod": <int>,
- *        "numSamplesPerPoll": <int>,
- *        "deviceInfoUpdatePeriod": <int>}'
- *
- * >>> particle function call tide-gauge-1 config <jsonData>
- **/
-int functionConfig(String params) {
-    JSONObjectIterator iter(JSONValue::parseCopy(params));
-    while(iter.next()) {
-        JSONString paramName = iter.name();
-        JSONValue  paramValue = iter.value();
-
-        Log.info("Config (%s, %s)", (const char*) paramName, (const char*) paramValue.toString());
-
-        if (paramName == "sensorPollingPeriod") {
-            if (paramValue.isNumber()) {
-                sensorPollingPeriod = paramValue.toInt();
-                sensorPollingTimer.changePeriod(sensorPollingPeriod);
-            } else if (paramValue.isNull()) {
-                sensorPollingPeriod = -1;
-                sensorPollingTimer.stop();
-            }
-        }
-
-        if (paramName == "cloudUpdatePeriod") {
-            if (paramValue.isNumber()) {
-                cloudUpdatePeriod = paramValue.toInt();
-
-                // We don't want to update faster than a certain limit
-                if (cloudUpdatePeriod < MIN_UPDATE_PERIOD) cloudUpdatePeriod = MIN_UPDATE_PERIOD;
-
-                cloudUpdateTimer.changePeriod(cloudUpdatePeriod);
-            } else if (paramValue.isNull()) {
-                cloudUpdatePeriod = -1;
-                cloudUpdateTimer.stop();
-            }
-        }
-
-        if (paramName == "numSamplesPerPoll" && paramValue.isNumber()) {
-            numSamplesPerPoll = paramValue.toInt();
-        }
-
-        if (paramName == "deviceInfoUpdatePeriod") {
-            if (paramValue.isNumber()) {
-                deviceInfoUpdatePeriod = paramValue.toInt();
-
-                // We don't want to update faster than a certain limit
-                if (deviceInfoUpdatePeriod < MIN_UPDATE_PERIOD) deviceInfoUpdatePeriod = MIN_UPDATE_PERIOD;
-
-                deviceInfoUpdateTimer.changePeriod(deviceInfoUpdatePeriod);
-            } else if (paramValue.isNull()) {
-                deviceInfoUpdatePeriod = -1;
-                deviceInfoUpdateTimer.stop();
-            }
-        }
-    }
-    return 0;
-}
 
 
 /**
@@ -197,41 +127,55 @@ int functionConfig(String params) {
  * UART result into an integer (in mm) and pushes
  * the data onto the back of the queue (if room).
  **/
-bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
-    for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
-        delay(500);
-        SensorRecord record;
+bool sensorPolling(std::queue<DataRecord>& recordQueue) {
 
-        record.time = Time.now();
-
-        // Trigger a read
-        digitalWrite(SENSOR_ENABLE_PIN, HIGH);
-        delay(1);
-        digitalWrite(SENSOR_ENABLE_PIN, LOW);
-
-        // Get reading from UART
-        char buffer[5] = "R012";  // Fake Data
-        /*char buffer[5] = {0};*/
-        /*int j = 0;*/
-        /*char c = '\0';*/
-        /*while ((c = Serial1.read()) != '\r') {*/
-        /*    if (c != 0xFF) {*/
-        /*        buffer[j++] = c;*/
-        /*    }*/
-        /*}*/
-
-        Log.info("Buffer Contents: %.5s", buffer);
-
-        // Parse UART and save to record
-        sscanf(buffer, "R%d", &record.data);
-
-        // Save to queue if we have room
-        if (recordQueue.size() < MAX_RECORDS) {
-            recordQueue.push(record);
-        } else {
-            Log.warn("Record queue full. Max size = %d", MAX_RECORDS);
-        }
+    // We can't collect a sample if the queue is full
+    if (recordQueue.size() >= MAX_RECORDS) {
+        Log.warn("Record queue full. Max size = %d", MAX_RECORDS);
+        return false;
     }
+
+    // The new record to store
+    // data in before pushing
+    // to the record queue.
+    DataRecord record;
+
+    // Pre-fill with non-sensor data
+    record.timestamp = Time.now();
+    record.batterypercent = batteryMonitor.cellPercent();
+    record.queuesize = recordQueue.size();
+    record.distance = 100;
+
+    // Collect samples
+    // for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
+    //     delay(500);
+    //
+    //     // Trigger a read
+    //     digitalWrite(SENSOR_ENABLE_PIN, HIGH);
+    //     delay(1);
+    //     digitalWrite(SENSOR_ENABLE_PIN, LOW);
+    //
+    //     // Get reading from UART
+    //     char buffer[5] = "R012";  // Fake Data
+    //     /*char buffer[5] = {0};*/
+    //     /*int j = 0;*/
+    //     /*char c = '\0';*/
+    //     /*while ((c = Serial1.read()) != '\r') {*/
+    //     /*    if (c != 0xFF) {*/
+    //     /*        buffer[j++] = c;*/
+    //     /*    }*/
+    //     /*}*/
+    //
+    //     Log.info("Buffer Contents: %.5s", buffer);
+    //
+    //     // Parse UART and save to record
+    //     sscanf(buffer, "R%d", &record.data);
+    //
+    // }
+
+    // Save to queue
+    recordQueue.push(record);
+
     return false;
 }
 
@@ -247,118 +191,94 @@ bool sensorPolling(std::queue<SensorRecord>& recordQueue) {
  * via the `doCloudUpdate` flag. Will only publish at
  * a max rate defined by `MIN_UPDATE_PERIOD`.
  * Returns a boolean indicating if another update is needed.
- **/
-bool cloudUpdate(std::queue<SensorRecord>& recordQueue) {
 
-    Log.info("Begin Cloud Update");
+ {
+    "name": "tide-guage-1",
+    "data": [
+        [
+            1689981501,
+            {
+                "distance": 100,
+                "queue-size": 9,
+                "battery-percent": 83.7
+            }
+        ]
+    ]
+ }
+
+
+
+
+
+
+
+
+ **/
+bool cloudUpdate(std::queue<DataRecord>& recordQueue) {
+
     static time_t lastPublish = 0;
     static char buff[MAX_PUBLISH_SIZE];
 
+
+    // Nothing to do if the queue is empty
+    if (recordQueue.empty()) {
+        return false;
+    }
+
+    // Too soon since last publish
+    if (Time.now() <= lastPublish+(MIN_UPDATE_PERIOD/1000)) {
+        return true; // retry
+    }
+
+
+
+
     int numRecords = 0;
     int numBytes = 0;
-    time_t now = Time.now();
 
     // Begin saving as JSON array of JSON objects
     JSONBufferWriter json(buff, sizeof(buff)-1);
+    json.beginObject();
+    json.name("name").value(DEVICE_NAME);
+    json.name("data");
     json.beginArray();
 
     // Save all the data in the queue unless
-    // we run out of space in the buffer,
-    // or we are publishing too fast.
-    while (!recordQueue.empty() &&
-           json.bufferSize() > numBytes+MAX_BYTES_PER_RECORD+sizeof("]") &&
-           now > lastPublish+(MIN_UPDATE_PERIOD/1000)) {
+    // we run out of space in the buffer
+    while (!recordQueue.empty() && json.bufferSize() > (json.dataSize() + MAX_BYTES_PER_RECORD)) {
 
         // Get data record from queue
-        auto record = recordQueue.front();
+        DataRecord record = recordQueue.front();
         recordQueue.pop();
+
+        json.beginArray();
+        json.value(String(record.timestamp));
 
         // Convert data record to JSON
         // We convert time to a String first
         // to get around type size limitations
         // of the JSON writer library.
         json.beginObject();
-        json.name("time").value(String(record.time));
-        json.name("dist").value(record.data);
+        json.name("distance").value(record.distance);
+        json.name("queue-size").value(record.queuesize);
+        json.name("battery-percent").value(record.batterypercent, 1);
         json.endObject();
 
-        // Save info about JSON progress
-        numBytes = json.dataSize();
-        numRecords++;
+        json.endArray();
     }
 
-    // Terminate the JSON string
     json.endArray();
-    numBytes = json.dataSize();
-    json.buffer()[numBytes] = '\0';
+    json.endObject();
 
-    // Publish data (if any) to cloud
-    if (numRecords > 0) {
-        Log.info("Publishing: %d records for %d bytes", numRecords, numBytes);
-        Particle.publish("sensor-data", buff);
-        lastPublish = Time.now();
-    }
+    // Null terminate the JSON string
+    json.buffer()[std::min(json.bufferSize(), json.dataSize())] = '\0';
+
+    // Publish data to cloud
+    Particle.publish("sensor-data", buff);
+    lastPublish = Time.now();
 
     // Try again if records still waiting
     return !recordQueue.empty();
-}
-
-
-/**
- * Publish device info to the cloud.
- *
- * This function gathers various info about the
- * device and publishes it to the cloud as a JSON
- * object. Each key describes the device property
- * name with the value representing the property
- * value at the time this function is called.
- *
- *      '{"time": <int>,
- *        "sensorPollingPeriod": <int>,
- *        "cloudUpdatePeriod": <int>,
- *        "numSamplesPerPoll": <int>,
- *        "deviceInfoUpdatePeriod": <int>,
- *        "batteryPercent": <float>,
- *        "queueSize": <int>}'
- *
- * Returns a boolean indicating if another update
- * is needed. Currently never needed; always false.
- **/
-bool deviceInfoUpdate(std::queue<SensorRecord>& recordQueue) {
-
-    static char buff[MAX_PUBLISH_SIZE];
-
-    // Get values that need measuring
-    float batteryPercent = batteryMonitor.cellPercent();
-    int queueSize = recordQueue.size();
-    size_t timestamp = Time.now();
-    String batteryStateStr;
-
-    // Saving as JSON object
-    JSONBufferWriter json(buff, sizeof(buff)-1);
-    json.beginObject();
-    json.name("time").value(String(timestamp));
-    json.name("sensorPollingPeriod").value(sensorPollingPeriod);
-    json.name("cloudUpdatePeriod").value(cloudUpdatePeriod);
-    json.name("numSamplesPerPoll").value(numSamplesPerPoll);
-    json.name("deviceInfoUpdatePeriod").value(deviceInfoUpdatePeriod);
-    json.name("batteryPercent").value(batteryPercent);
-    json.name("queueSize").value(queueSize);
-    json.endObject();
-
-    // Terminate the JSON string
-    json.buffer()[json.dataSize()] = '\0';
-
-    // Publish data to cloud & log
-    Log.info("sensorPollingPeriod = %d", sensorPollingPeriod);
-    Log.info("cloudUpdatePeriod = %d", cloudUpdatePeriod);
-    Log.info("numSamplesPerPoll = %d", numSamplesPerPoll);
-    Log.info("deviceInfoUpdatePeriod = %d", deviceInfoUpdatePeriod);
-    Log.info("batteryPercent = %.2f", batteryPercent);
-    Log.info("queueSize = %d", queueSize);
-    Particle.publish("device-data", buff);
-
-    return false;
 }
 
 
@@ -403,8 +323,7 @@ STARTUP(setPins());
  **/
 void setup() {
 
-    // Register the config function
-    Particle.function("config", functionConfig);
+    // TODO: read in config values (and subscribe to further reads)
 
     // Initialize serial library
     Serial1.begin(9600);
@@ -418,7 +337,6 @@ void setup() {
     timeSyncTimer.start();
     sensorPollingTimer.start();
     cloudUpdateTimer.start();
-    deviceInfoUpdateTimer.start();
 }
 
 
@@ -428,9 +346,8 @@ void setup() {
  * (set by timers) and call the corresponding functions.
  **/
 void loop() {
-    static std::queue<SensorRecord> recordQueue;
+    static std::queue<DataRecord> recordQueue;
     if (doTimeSync) doTimeSync = timeSync();
     if (doSensorPoll) doSensorPoll = sensorPolling(recordQueue);
     if (doCloudUpdate) doCloudUpdate = cloudUpdate(recordQueue);
-    if (doDeviceInfoUpdate) doDeviceInfoUpdate = deviceInfoUpdate(recordQueue);
 }
