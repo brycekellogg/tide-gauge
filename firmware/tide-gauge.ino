@@ -144,34 +144,35 @@ bool sensorPolling(std::queue<DataRecord>& recordQueue) {
     record.timestamp = Time.now();
     record.batterypercent = batteryMonitor.cellPercent();
     record.queuesize = recordQueue.size();
-    record.distance = 100;
+    record.distance = 666;
 
     // Collect samples
     // for (unsigned int i = 0; i < numSamplesPerPoll; i++) {
-    //     delay(500);
-    //
-    //     // Trigger a read
-    //     digitalWrite(SENSOR_ENABLE_PIN, HIGH);
-    //     delay(1);
-    //     digitalWrite(SENSOR_ENABLE_PIN, LOW);
-    //
-    //     // Get reading from UART
-    //     char buffer[5] = "R012";  // Fake Data
-    //     /*char buffer[5] = {0};*/
-    //     /*int j = 0;*/
-    //     /*char c = '\0';*/
-    //     /*while ((c = Serial1.read()) != '\r') {*/
-    //     /*    if (c != 0xFF) {*/
-    //     /*        buffer[j++] = c;*/
-    //     /*    }*/
-    //     /*}*/
+    delay(500);
+
+    // Trigger a read
+    digitalWrite(SENSOR_ENABLE_PIN, HIGH);
+    delay(1);
+    digitalWrite(SENSOR_ENABLE_PIN, LOW);
+
+    // Get reading from UART
+    // char buffer[5] = "R012";  // Fake Data
+    char buffer[5] = {0};
+    int j = 0;
+    char c = '\0';
+    while ((c = Serial1.read()) != '\r' && j < sizeof(buffer)) {
+        if (c != 0xFF) {
+            buffer[j++] = c;
+        }
+    }
     //
     //     Log.info("Buffer Contents: %.5s", buffer);
     //
-    //     // Parse UART and save to record
-    //     sscanf(buffer, "R%d", &record.data);
-    //
+    // Parse UART and save to record
+    sscanf(buffer, "R%d", &record.distance);
+
     // }
+
 
     // Save to queue
     recordQueue.push(record);
