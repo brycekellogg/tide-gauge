@@ -1,4 +1,4 @@
-PARTICLE=${HOME}/bin/particle
+PARTICLE=${HOME}/.local/bin/particle
 
 # Compile the firmware using the cloud compile
 firmware/tide-gauge.bin: firmware/tide-gauge.ino
@@ -14,12 +14,10 @@ firmware-ota: firmware/tide-gauge.bin
 	@${PARTICLE} flash --cloud tide-gauge-1 $?
 
 # Update ${PARTICLE} webhooks
-webhook-deploy: cloud/webhook-sensor-data.json cloud/webhook-device-data.json
+webhook-deploy: cloud/webhook-sensor-data.json
 	@sed -e 's@AWS_APIKEY@'"${AWS_APIKEY}"'@' cloud/webhook-sensor-data.json > webhook-sensor-data.tmp.json
-	@sed -e 's@AWS_APIKEY@'"${AWS_APIKEY}"'@' cloud/webhook-device-data.json > webhook-device-data.tmp.json
 	@${PARTICLE} webhook delete all
 	@${PARTICLE} webhook create webhook-sensor-data.tmp.json
-	@${PARTICLE} webhook create cloud/webhook-device-data.tmp.json
 	@rm *.tmp.json
 
 # Build the zip file with code for lambda function
