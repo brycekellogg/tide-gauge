@@ -275,7 +275,7 @@ bool cloudUpdate(std::queue<DataRecord>& recordQueue) {
     json.buffer()[std::min(json.bufferSize(), json.dataSize())] = '\0';
 
     // Publish data to cloud
-    Particle.publish("sensor-data", buff);
+    Particle.publish("data", buff);
     lastPublish = Time.now();
 
     // Try again if records still waiting

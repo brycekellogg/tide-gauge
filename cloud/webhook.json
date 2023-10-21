@@ -1,5 +1,5 @@
 {
-    "event": "sensor-data",
+    "event": "data",
     "url": "https://eobf8no6rt2if1d.m.pipedream.net",
     "requestType": "POST",
     "headers": {"x-api-key": "AWS_APIKEY"},
