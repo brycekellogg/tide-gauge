@@ -20,26 +20,5 @@ webhook-deploy: cloud/webhook-sensor-data.json
 	@${PARTICLE} webhook create webhook-sensor-data.tmp.json
 	@rm *.tmp.json
 
-# Build the zip file with code for lambda function
-cloud/lambda.zip: cloud/lambda.py cloud/requirements.txt
-	@rm -rf cloud/lambda.zip cloud/lambda-dir/
-	@mkdir cloud/lambda-dir
-	@pip install -t cloud/lambda-dir -r cloud/requirements.txt --no-deps
-	@cp cloud/lambda.py cloud/lambda-dir/
-	@(cd cloud/lambda-dir; zip -r ../lambda.zip *)
-
-# Upload everything to S3 and update stack
-LAMBDA_SOURCE:=lambda-$(shell uuidgen).zip
-aws-deploy: cloud/cloud.yaml
-	# @aws s3 cp cloud/lambda.zip s3://${AWS_BUCKET}/${LAMBDA_SOURCE}
-	@aws cloudformation create-stack --stack-name tide-gauge \
-									 --template-body file://cloud/cloud.yaml \
-									 --capabilities CAPABILITY_IAM \
-									 --parameters ParameterKey=LambdaSource,ParameterValue=${LAMBDA_SOURCE} \
-												  ParameterKey=DeviceID,ParameterValue=${PARTICLE_DEVICE} \
-												  ParameterKey=ParticleToken,ParameterValue=${PARTICLE_TOKEN} \
-												  ParameterKey=BucketName,ParameterValue=${AWS_BUCKET}
-	@aws cloudformation wait stack-update-complete --stack-name tide-gauge
-
 clean:
-	@rm -rf firmware/tide-gauge.bin cloud/lambda.zip cloud/lambda-dir
+	@rm -rf firmware/tide-gauge.bin
