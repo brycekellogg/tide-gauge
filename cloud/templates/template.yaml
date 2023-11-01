@@ -1,3 +1,14 @@
+#  _______ _     _         _____
+# |__   __(_)   | |       / ____|
+#    | |   _  __| | ___  | |  __  __ _ _   _  __ _  ___
+#    | |  | |/ _` |/ _ \ | | |_ |/ _` | | | |/ _` |/ _ \
+#    | |  | | (_| |  __/ | |__| | (_| | |_| | (_| |  __/
+#    |_|  |_|\__,_|\___|  \_____|\__,_|\__,_|\__, |\___|
+#                                             __/ |
+#                                            |___/
+# Author: Bryce Kellogg (bryce@kellogg.org)
+# Copyright: 2023 Bryce Kellogg
+# License: GPLv3
 #
 #
 # +-------------+       +-------------+       +--------+       +----------+
@@ -23,9 +34,9 @@ Parameters:
   # The source for each substack template is a URL
   # pointing to a resource on AWS S3. We pass in the
   # actual URLs via these CloudFormation parameters.
-  databaseTemplateURL:   {Type: String}
-  apiGatewayTemplateURL: {Type: String}
-  lambdaTemplateURL:     {Type: String}
+  # databaseTemplateURL:   {Type: String}
+  # apiGatewayTemplateURL: {Type: String}
+  # lambdaTemplateURL:     {Type: String}
 
   # The lambda uses the bucket name and
   # the name of the zipfile to locate
@@ -35,33 +46,385 @@ Parameters:
 
 Resources:
 
-  # TODO: ????
-  StackDatabase:
-    Type: AWS::CloudFormation::Stack
+  # The section of the template for the database infrastructure.
+  #
+  # All persistent data storage for the tide guage cloud infrastructure is
+  # stored in AWS DynamoDB tables. The database uses the schema descibed below:
+  #
+  # Data Table:
+  #
+  #    +------------+-----------+-----+
+  #    | devicename | timestamp | ... |
+  #    |    <str>   |   <int>   |     |
+  #    +------------+-----------+-----+
+  #
+  #    The "Data Table" is used to store all time series data in the system. Each
+  #    record/row is identified by the composite primary key (devicename, timestamp),
+  #    where devicename is the partition key & timestamp is the sort key. The other
+  #    attributes in a given record correspond to the data for that timestamp
+  #    for that specific device.
+  #
+  # Current Config Table
+  #
+  #    +------------+-----+
+  #    | devicename | ... |
+  #    |    <str>   |     |
+  #    +------------+-----+
+  #
+  #    The "Config Table" is used to represent the current state of various config
+  #    options. Each record/row is identified by a primary partition key devicename
+  #    that corresponds to a single device. The other attributes describe the current
+  #    state of that device.
+  #
+  # These two tables can be referenced via tables name:
+  #    - <StackName>-data-table
+  #    - <StackName>-config-table
+  #
+  # The values and formats of non-key attributes are defined elsewhere.
+        # stackName: !Ref AWS::StackName
+  DataTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      TemplateURL: !Ref databaseTemplateURL
-      Parameters:
-        stackName: !Ref AWS::StackName
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Join ['-', [!Ref AWS::StackName, 'data-table']]
+      AttributeDefinitions:
+        - {AttributeName: "devicename", AttributeType: "S"}
+        - {AttributeName: "timestamp", AttributeType: "N"}
+      KeySchema:
+        - {AttributeName: "devicename", KeyType: "HASH"}
+        - {AttributeName: "timestamp", KeyType: "RANGE"}
 
-  # TODO: ???
-  StackLambda:
-    Type: AWS::CloudFormation::Stack
+  ConfigTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      TemplateURL: !Ref lambdaTemplateURL
-      Parameters: 
-        stackName:   !Ref AWS::StackName
-        bucketName:  !Ref bucketName
-        zipfileName: !Ref zipfileName
-      # Outputs:
-      #   - 
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Join ['-', [!Ref AWS::StackName, 'config-table']]
+      AttributeDefinitions:
+        - {AttributeName: "devicename", AttributeType: "S"}
+      KeySchema:
+        - {AttributeName: "devicename", KeyType: "HASH"}
 
-  # TODO: ???
-  StackApi:
-    Type: AWS::CloudFormation::Stack
+
+
+  # The section of the template for the lambda function infrastructure.
+  #
+  # TODO
+
+  # Gives the lambda function permission
+  # to save logs to CloudWatch and to
+  # access database
+  LambdaFunctionRole:
+    Type: AWS::IAM::Role
     Properties:
-      TemplateURL: !Ref apiGatewayTemplateURL
-      Parameters: 
-        lambdaArn: {Fn::GetAtt: [StackLambda, Outputs.lambdaArn]}
-      #   stackName:   !Ref AWS::StackName
-      #   bucketName:  !Ref bucketName
-      #   zipfileName: !Ref zipfileName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: {Service: [lambda.amazonaws.com]}
+          Action: [sts:AssumeRole]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+
+  # Gives the API Gateway permission
+  # to invoke the lambda function.
+  ConfigLambdaPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+    - LambdaFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunction
+      Principal: apigateway.amazonaws.com
+
+  # We use a single AWS Lambda function to
+  # respond to most API calls. Anything that
+  # requires interaction with the database
+  # goes through this same function. The
+  # function acts based on the URL resource
+  # and the HTTP method used.
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      Handler: lambdafunction.process
+      Role: !GetAtt LambdaFunctionRole.Arn
+      FunctionName:  !Join ['-', [!Ref AWS::StackName, 'lambda-function']]
+      Code: 
+        S3Bucket: !Ref bucketName
+        S3Key: !Ref zipfileName
+      Environment:
+        Variables:
+          StackName: !Ref AWS::StackName
+
+
+  # API Gateway
+  #
+  # This section describes the resources for the API Gateway
+  # that exposes our REST API. 
+  #
+  # All interaction with the
+  # system will be through this API. The app
+  # will not directly connect to Particle.io and
+  # nothing will directly connect to the database
+  #
+  # Rest API Methods:
+  #    - POST /data
+  #    - GET  /data
+  #    - POST /config
+  #    - GET  /config
+  #    - POST /login
+  #
+
+
+  # An AWS API Gateway resource that we
+  # then attach all our other URL resources
+  # and HTTP methods to.
+  RestAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref AWS::StackName
+
+  # A deployment is a way of tracking verions
+  # of the API that is deployed to a stage.
+  # Must have "DependsOn" for each method.
+  # RestDeployment:
+  #   Type: AWS::ApiGateway::Deployment
+  #   DependsOn:
+  #     - MethodPostData
+  #     - MethodPostConfig
+  #     - MethodPostLogin
+  #   Properties:
+  #     RestApiId: !Ref RestAPI
+
+  # A stage represents various versions of the
+  # deployed API. We  only have a single
+  # stage and don't really worry about this.
+  # RestStage:
+  #   Type: AWS::ApiGateway::Stage
+  #   Properties:
+  #     StageName: production
+  #     RestApiId: !Ref RestAPI
+  #     DeploymentId: !Ref RestDeployment
+
+  # Allows us to limit usage of the
+  # API by setting the number of times
+  # per time period an API key works.
+  # RestUsagePlan:
+  #   Type: AWS::ApiGateway::UsagePlan
+  #   Properties:
+  #     ApiStages:
+  #       - ApiId: !Ref RestAPI
+  #         Stage: !Ref RestStage
+  #     Quota: {Limit: 3000, Period: DAY}
+  #     Throttle: {BurstLimit: 10, RateLimit: 2}
+  #     UsagePlanName: !Ref AWS::StackName
+
+  # This represents the URL at /data for publishing
+  # and querying all data from the database
+  ResourceData:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: data
+      RestApiId: !Ref RestAPI
+
+  # This represents the URL at /config for
+  # configuring the sensor settings.
+  ResourceConfig:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: config
+      RestApiId: !Ref RestAPI
+
+  # This represents the URL at /login for checking
+  # if we have a valid API key for a login step.
+  ResourceLogin:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: login
+      RestApiId: !Ref RestAPI
+
+
+  # An HTTP method for forwarding a data
+  # HTTP request to the lambda function.
+  MethodPostData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: true
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceData
+      RestApiId: !Ref RestAPI
+      # RequestModels: {application/json: ModelPostData}
+      # RequestValidatorId: !Ref RequestValidator
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  MethodGetData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: true
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceData
+      RestApiId: !Ref RestAPI
+  #     RequestValidatorId: !Ref RequestValidator
+  #     RequestParameters:
+  #       method.request.querystring.id: true
+  #       method.request.querystring.metric: true
+  #       method.request.querystring.limit: true
+  #       method.request.querystring.timestamp_eq: false
+  #       method.request.querystring.timestamp_gt: false
+  #       method.request.querystring.timestamp_lt: false
+  #       method.request.querystring.timestamp_lte: false
+  #       method.request.querystring.timestamp_gte: false
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: GET
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP method for forwarding a device data
+  # HTTP request to the lambda function.
+  # MethodDeviceData:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     ApiKeyRequired: true
+  #     HttpMethod: ANY
+  #     AuthorizationType: NONE
+  #     ResourceId: !Ref ResourceDeviceData
+  #     RestApiId: !Ref RestAPI
+  #     Integration:
+  #       Type: AWS_PROXY
+  #       IntegrationHttpMethod: POST
+  #       Uri: !Sub
+  #         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+  #         - LambdaArn: !GetAtt LambdaFunction.Arn
+
+  # An HTTP POST method for setting device config
+  # params. This will forward data to the Particle
+  # cloud to transmit to the device.
+  # MethodPostConfig:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     ApiKeyRequired: true
+  #     HttpMethod: POST
+  #     AuthorizationType: NONE
+  #     ResourceId: !Ref ResourceConfig
+  #     RestApiId: !Ref RestAPI
+  #     RequestModels: {application/json: ModelPostConfig}
+  #     RequestValidatorId: !Ref RequestValidator
+  #     Integration:
+  #       Type: HTTP
+  #       IntegrationHttpMethod: POST
+  #       Uri: https://api.particle.io/v1/devices/{deviceID}/config
+  #       RequestTemplates:
+  #         "application/json":
+  #           Fn::Sub:
+  #             - '
+  #               #set($context.requestOverride.path.deviceID = "${deviceID}")
+  #               #set($context.requestOverride.header.Authorization = "Bearer ${token}")
+  #               {
+  #                 "arg": "$util.escapeJavaScript($input.body)"
+  #               }'
+  #             - deviceID: !Ref DeviceID
+  #               token: !Ref ParticleToken
+      #   Type: MOCK
+      #   RequestTemplates: {"application/json": '{"statusCode": 200}'}
+      #   IntegrationResponses: [{StatusCode: 200}]
+      # MethodResponses: [{StatusCode: 200}]
+
+  # An HTTP POST method for to "log in" to the
+  # API. In reality, this just always returns
+  # success with no content. That allows us
+  # to check that we have a valid API key
+  # and acts as our "login" step.
+  # MethodPostLogin:
+  #   Type: AWS::ApiGateway::Method
+  #   Properties:
+  #     ApiKeyRequired: true
+  #     HttpMethod: POST
+  #     AuthorizationType: NONE
+  #     ResourceId: !Ref ResourceLogin
+  #     RestApiId: !Ref RestAPI
+  #     Integration:
+  #       Type: MOCK
+  #       RequestTemplates: {"application/json": '{"statusCode": 200}'}
+  #       IntegrationResponses: [{StatusCode: 200}]
+  #     MethodResponses: [{StatusCode: 200}]
+  #
+  # RequestValidator:
+  #   Type: AWS::ApiGateway::RequestValidator
+  #   Properties:
+  #     Name: PostConfig
+  #     RestApiId: !Ref RestAPI
+  #     ValidateRequestBody: true
+  #     ValidateRequestParameters: true
+
+  # ModelPostConfig:
+  #   Type: AWS::ApiGateway::Model
+  #   Properties:
+  #     ContentType: application/json
+  #     Name: ModelPostConfig
+  #     RestApiId: !Ref RestAPI
+  #     Schema:
+  #       $schema: 'http://json-schema.org/draft-04/schema#'
+  #       title: something
+  #       type: object
+  #       properties:
+  #         one: {type: integer}
+  #         class: {type: string}
+
+
+  # AWS Api Gateway uses this model to validate the request body of all incoming
+  # HTTP POST requests to the /data endpoint. To use this model, the endpoint
+  # is configured via: 
+  #        RequestModels: {application/json: ModelPostData}
+  # It uses JSON Schema to describe a request body that contains a JSON string
+  # with the correct format. The format used is described in the README.md.
+  # ModelPostData:
+  #   Type: AWS::ApiGateway::Model
+  #   Properties:
+  #     ContentType: application/json  # only validate JSON data
+  #     Name: ModelPostData
+  #     RestApiId: !Ref RestAPI
+  #     Schema:
+  #       $schema: 'http://json-schema.org/schema#'
+  #       type: object
+  #       properties:
+  #         name: {type: string}  # corresponds to the ID of the sensor sending the data
+  #         data:                 # contains all the sensor data with metric names as keys
+  #           type: array
+  #           items:
+  #             type: array
+  #             additionalItems: false
+  #             items:
+  #               - type: integer
+  #               - type: object
+  #                 patternProperties: {^.*$: {type: string}}
+  #       additionalProperties: false  # only "name" & "data" are allowed
+  #       required: [name, data]       # both "name" & "data" are always required
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
