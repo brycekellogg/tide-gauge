@@ -5,7 +5,7 @@
 # | Particle.io |<----->| API Gateway |<----->| Lambda |<----->| DynamoDB |
 # |             |       |             |       |        |       |          |
 # +-------------+       +-------------+       +--------+       +----------+
-#       ^                       ^
+#       ^                      ^
 #       |                      |
 #       |                      |
 #       |                      |
@@ -33,8 +33,8 @@
 
 
 
-# Parameters:
-  #
+Parameters:
+  lambdaArn: {Type: String}
   # BucketName:
   #   Type: String
   #
@@ -111,12 +111,12 @@ Resources:
 
   # This represents the URL at /data for publishing
   # and querying all data from the database
-  # ResourceData:
-  #   Type: AWS::ApiGateway::Resource
-  #   Properties:
-  #     ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
-  #     PathPart: data
-  #     RestApiId: !Ref RestAPI
+  ResourceData:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: {Fn::GetAtt: [RestAPI, RootResourceId]}
+      PathPart: data
+      RestApiId: !Ref RestAPI
 
   # This represents the URL at /config for
   # configuring the sensor settings.
@@ -139,23 +139,23 @@ Resources:
 
   # An HTTP method for forwarding a data
   # HTTP request to the lambda function.
-  # MethodPostData:
-  #   Type: AWS::ApiGateway::Method
-  #   Properties:
-  #     ApiKeyRequired: true
-  #     HttpMethod: POST
-  #     AuthorizationType: NONE
-  #     ResourceId: !Ref ResourceData
-  #     RestApiId: !Ref RestAPI
-  #     RequestModels: {application/json: ModelPostData}
-  #     RequestValidatorId: !Ref RequestValidator
-  #     Integration:
-  #       Type: AWS_PROXY
-  #       IntegrationHttpMethod: POST
-  #       Uri: !Sub
-  #         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
-  #         - LambdaArn: !GetAtt LambdaFunction.Arn
-  #
+  MethodPostData:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: true
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ResourceId: !Ref ResourceData
+      RestApiId: !Ref RestAPI
+      # RequestModels: {application/json: ModelPostData}
+      # RequestValidatorId: !Ref RequestValidator
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - LambdaArn: !Ref lambdaArn
+
   # MethodGetData:
   #   Type: AWS::ApiGateway::Method
   #   Properties:
@@ -257,7 +257,7 @@ Resources:
   #     RestApiId: !Ref RestAPI
   #     ValidateRequestBody: true
   #     ValidateRequestParameters: true
-  #
+
   # ModelPostConfig:
   #   Type: AWS::ApiGateway::Model
   #   Properties:
@@ -286,26 +286,21 @@ Resources:
   #     Name: ModelPostData
   #     RestApiId: !Ref RestAPI
   #     Schema:
-  #       $schema: 'http://json-schema.org/draft-04/schema#'
-  #       definitions: # "Definitions" allow us to pre-define types that can be referenced later
-  #         metric:    # a "metric" corresponds to the {"timestamp": <int>, "value": <number>} item
-  #           type: object
-  #           properties:
-  #               timestamp: {type: integer} # unix timestamps in whole numbered seconds
-  #               value: {type: number}      # values can be floating point, so use "number"
-  #           additionalProperties: false    # only "timestamp" & "value" are allowed
-  #           required: [timestamp, value]   # both "timestamp" & "value" are always required
-  #         metricList:  # a "metricList" corresponds to array of "metrics" as defined above
-  #           type: array
-  #           items:  {"$ref": "#/definitions/metric"}
+  #       $schema: 'http://json-schema.org/schema#'
   #       type: object
   #       properties:
   #         name: {type: string}  # corresponds to the ID of the sensor sending the data
   #         data:                 # contains all the sensor data with metric names as keys
-  #           type: object        # use regex pattern so any string can be used as a metric name
-  #           patternProperties: {^.*$: {"$ref": "#/definitions/metricList"}}
-  #       additionalProperties: false  # only "id" & "data" are allowed
-  #       required: [id, data]         # both "id" & "data" are always required
+  #           type: array
+  #           items:
+  #             type: array
+  #             additionalItems: false
+  #             items:
+  #               - type: integer
+  #               - type: object
+  #                 patternProperties: {^.*$: {type: string}}
+  #       additionalProperties: false  # only "name" & "data" are allowed
+  #       required: [name, data]       # both "name" & "data" are always required
 
 
 

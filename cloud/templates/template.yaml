@@ -52,4 +52,16 @@ Resources:
         stackName:   !Ref AWS::StackName
         bucketName:  !Ref bucketName
         zipfileName: !Ref zipfileName
+      # Outputs:
+      #   - 
 
+  # TODO: ???
+  StackApi:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref apiGatewayTemplateURL
+      Parameters: 
+        lambdaArn: {Fn::GetAtt: [StackLambda, Outputs.lambdaArn]}
+      #   stackName:   !Ref AWS::StackName
+      #   bucketName:  !Ref bucketName
+      #   zipfileName: !Ref zipfileName

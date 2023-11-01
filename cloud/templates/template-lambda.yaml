@@ -9,6 +9,9 @@ Parameters:
   bucketName:  {Type: String}
   zipfileName: {Type: String}
 
+Outputs:
+  lambdaArn: {Value: {Fn::GetAtt: [LambdaFunction, Arn]}}
+
 Resources:
 
   # Gives the lambda function permission
