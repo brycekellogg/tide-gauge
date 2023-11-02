@@ -44,6 +44,9 @@ Parameters:
   bucketName:  {Type: String}
   zipfileName: {Type: String}
 
+Outputs:
+  lambdaArn: {Value: !GetAtt LambdaFunction.Arn}
+    
 Resources:
 
   # The section of the template for the database infrastructure.

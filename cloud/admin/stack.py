@@ -17,6 +17,7 @@ import os
 import io
 from zipfile import ZipFile
 import uuid
+from urllib import request
 import boto3
 from pprint import pprint
 from botocore.exceptions import ClientError
@@ -46,7 +47,7 @@ def command_stackDeploy(args):
     templateFilename = 'templates/template.yaml'
     lambdaFilename = 'lambdafunction/lambdafunction.py'
     lambdaArcname = 'lambdafunction.py'
-    lambdaZipFilename = 'lambda.zip'
+    lambdaZipFilename = f'lambda-{uuid.uuid4()}.zip'
 
     # Pre-declare boto3 clients needed to deploy
     cloudformation = boto3.client('cloudformation')
@@ -116,20 +117,6 @@ def command_stackDeploy(args):
     except ClientError as e:
         print(f"Error: unexpected error deploying {e}")
 
-    # Clean up deploy by deleting S3 bucket
-    # TODO: move this to "delete"
-    # toDeleteObjects = [
-    #     {'Key': topLevelTemplateFilename},
-    #     {'Key': databaseTemplateFilename},
-    #     {'Key': apiGatewayTemplateFilename},
-    #     {'Key': lambdaTemplateFilename},
-    #     {'Key': lambdaZipFilename},
-    # ]
-    # try:
-    #     s3.delete_objects(Bucket=bucketName, Delete={'Objects': toDeleteObjects})
-    #     s3.delete_bucket(Bucket=bucketName)
-    # except ClientError as e:
-    #     sys.exit(f"Error: unexpected error cleaning up bucket {e}")
 
 
 def command_stackUpdate(args):
@@ -142,17 +129,15 @@ def command_stackUpdate(args):
     stackName = args.name
 
     # Filenames for the various files that need to be uploaded
-    topLevelTemplateFilename = 'templates/template.yaml'
-    databaseTemplateFilename = 'templates/template-db.yaml'
-    apiGatewayTemplateFilename = 'templates/template-api.yaml'
-    lambdaTemplateFilename = 'templates/template-lambda.yaml'
+    templateFilename = 'templates/template.yaml'
     lambdaFilename = 'lambdafunction/lambdafunction.py'
     lambdaArcname = 'lambdafunction.py'
-    lambdaZipFilename = 'lambda.zip'
+    lambdaZipFilename = f'lambda-{uuid.uuid4()}.zip'
 
     # Pre-declare boto3 clients needed to update
     cloudformation = boto3.client('cloudformation')
     s3 = boto3.client('s3')
+    lambdaClient = boto3.client('lambda')
     
     # Validate that the to-update stack does already exist. Describe the stack
     # using boto3 and expect it to throw a ClientError with code "ValidationError".
@@ -165,60 +150,64 @@ def command_stackUpdate(args):
 
     # Get S3 bucket for stack
     bucketName = next(_ for _ in res['Stacks'][0]['Parameters'] if _['ParameterKey'] == 'bucketName')['ParameterValue']
+    lambdaZipFileNameOld = next(_ for _ in res['Stacks'][0]['Parameters'] if _['ParameterKey'] == 'zipfileName')['ParameterValue']
+    lambdaArn = next(_ for _ in res['Stacks'][0]['Outputs'] if _['OutputKey'] == 'lambdaArn')['OutputValue']
 
     # Validate each template exists, is readable, and is valid
-    if not os.access(topLevelTemplateFilename, os.R_OK):   sys.exit(f"Error: could not read template file {topLevelTemplateFilename}")
-    if not os.access(databaseTemplateFilename, os.R_OK):   sys.exit(f"Error: could not read template file {databaseTemplateFilename}")
-    if not os.access(apiGatewayTemplateFilename, os.R_OK): sys.exit(f"Error: could not read template file {apiGatewayTemplateFilename}")
-    if not os.access(lambdaTemplateFilename, os.R_OK):     sys.exit(f"Error: could not read template file {lambdaTemplateFilename}")
+    if not os.access(templateFilename, os.R_OK):
+        sys.exit(f"Error: could not read template file {templateFilename}")
 
     # We pass the template body as a string to multiple future functions, so we read it in here.
-    with open(topLevelTemplateFilename)   as f: topLevelTemplateBody   = f.read()
-    with open(databaseTemplateFilename)   as f: databaseTemplateBody   = f.read()
-    with open(apiGatewayTemplateFilename) as f: apiGatewayTemplateBody = f.read()
-    with open(lambdaTemplateFilename)     as f: lambdaTemplateBody     = f.read()
+    with open(templateFilename) as f:
+        templateBody = f.read()
+    with open(lambdaFilename) as f:
+        lambdaBody = f.read()
 
     # Validate the template itself via CloudFormation. If we don't
     # get an exception here, it means the tamplate is valid.
     try:
-        cloudformation.validate_template(TemplateBody=topLevelTemplateBody)
-        cloudformation.validate_template(TemplateBody=databaseTemplateBody)
-        cloudformation.validate_template(TemplateBody=apiGatewayTemplateBody)
-        cloudformation.validate_template(TemplateBody=lambdaTemplateBody)
+        cloudformation.validate_template(TemplateBody=templateBody)
     except ClientError as e:
         sys.exit(f"Error: {e.response['Error']['Message']}")
 
+    # Download existing lambda function python code
+    res = lambdaClient.get_function(FunctionName=lambdaArn)
+    lambdaUrl = res['Code']['Location']
+    lambdaContents = io.BytesIO(request.urlopen(lambdaUrl).read())
+
+    with ZipFile(lambdaContents) as archive:
+        lambdaText = archive.read(lambdaArcname)
+    lambdaUpdate = lambdaText.decode('utf-8') != lambdaBody
+        
+    if lambdaUpdate:
+        # Zip the python file of the lambda function into an in-memory zipfile
+        zipBuffer = io.BytesIO()
+        with ZipFile(zipBuffer, mode='a') as archive: archive.write(lambdaFilename, arcname=lambdaArcname)
+    else:
+        lambdaZipFilename = lambdaZipFileNameOld
+
+
     # Upload all the CloudFormation templates to the AWS S3 bucket
     try:
-        s3.put_object(Bucket=bucketName, Body=topLevelTemplateBody,   Key=topLevelTemplateFilename)
-        s3.put_object(Bucket=bucketName, Body=databaseTemplateBody,   Key=databaseTemplateFilename)
-        s3.put_object(Bucket=bucketName, Body=apiGatewayTemplateBody, Key=apiGatewayTemplateFilename)
-        s3.put_object(Bucket=bucketName, Body=lambdaTemplateBody,     Key=lambdaTemplateFilename)
-        # s3.put_object(Bucket=bucketName, Body=zipBuffer.getvalue(),   Key=lambdaZipFilename)
+        s3.put_object(Bucket=bucketName, Body=templateBody, Key=templateFilename)
+        if lambdaUpdate:
+            s3.put_object(Bucket=bucketName, Body=zipBuffer.getvalue(), Key=lambdaZipFilename)
+            s3.delete_object(Bucket=bucketName, Key=lambdaZipFileNameOld)
     except ClientError as e:
         # TODO: clean up AWS S3 bucket
         sys.exit(f"Error: unexpected error uploading templates {e}")  # TODO: may leak S3 bucket
 
-    # Download existing lambda function python code
-    # TODO
-
 
     # Create change set
-    topLevelTemplateURL   = f'https://s3.amazonaws.com/{bucketName}/{topLevelTemplateFilename}'
-    databaseTemplateURL   = f'https://s3.amazonaws.com/{bucketName}/{databaseTemplateFilename}'
-    apiGatewayTemplateURL = f'https://s3.amazonaws.com/{bucketName}/{apiGatewayTemplateFilename}'
-    lambdaTemplateURL     = f'https://s3.amazonaws.com/{bucketName}/{lambdaTemplateFilename}'
+    templateURL = f'https://s3.amazonaws.com/{bucketName}/{templateFilename}'
     parameters = [
-        {'ParameterKey': 'databaseTemplateURL',   'ParameterValue': databaseTemplateURL},
-        {'ParameterKey': 'apiGatewayTemplateURL', 'ParameterValue': apiGatewayTemplateURL},
-        {'ParameterKey': 'lambdaTemplateURL',     'ParameterValue': lambdaTemplateURL},
         {'ParameterKey': 'bucketName',  'ParameterValue': bucketName},
         {'ParameterKey': 'zipfileName', 'ParameterValue': lambdaZipFilename},
     ]
     cloudformation.create_change_set(
             StackName=stackName,
             ChangeSetName='update',
-            TemplateURL=topLevelTemplateURL,
+            TemplateURL=templateURL,
             Capabilities=['CAPABILITY_NAMED_IAM'],
             Parameters=parameters)
 
@@ -277,6 +266,20 @@ def command_stackDelete(args):
         keyId = key['id']
         res = apigateway.delete_api_key(apiKey=keyId)
 
+    # Clean up deploy by deleting S3 bucket
+    # TODO: move this to "delete"
+    # toDeleteObjects = [
+    #     {'Key': topLevelTemplateFilename},
+    #     {'Key': databaseTemplateFilename},
+    #     {'Key': apiGatewayTemplateFilename},
+    #     {'Key': lambdaTemplateFilename},
+    #     {'Key': lambdaZipFilename},
+    # ]
+    # try:
+    #     s3.delete_objects(Bucket=bucketName, Delete={'Objects': toDeleteObjects})
+    #     s3.delete_bucket(Bucket=bucketName)
+    # except ClientError as e:
+    #     sys.exit(f"Error: unexpected error cleaning up bucket {e}")
 
     print("Delete complete")
 
