@@ -45,7 +45,8 @@ if __name__ == '__main__':
     parser_stackDelete.add_argument('--name', default=DEFAULT_STACKNAME)
 
     # The stack-update command
-    parser_stackUpdate = subParser.add_parser('stack-update')
+    parser_stackUpdate = subParser.add_parser('stack-update', help="Update AWS Cloudformation stack")
+    parser_stackUpdate.set_defaults(func=command_stackUpdate)
     parser_stackUpdate.add_argument('--name', default=DEFAULT_STACKNAME)
     parser_stackUpdate.add_argument('--region', default=DEFAULT_REGION)
 

@@ -211,6 +211,40 @@ def command_stackUpdate(args):
             Capabilities=['CAPABILITY_NAMED_IAM'],
             Parameters=parameters)
 
+    # Wait for change set to be fully defined
+    waiter = cloudformation.get_waiter('change_set_create_complete')
+    waiter.wait(
+            StackName=stackName,
+            ChangeSetName='update')
+
+    res = cloudformation.describe_change_set(
+            StackName=stackName,
+            ChangeSetName='update')
+
+    # Get confirmation
+    changes = res['Changes']
+    print(f"Updating stack {stackName} with the following changes:")
+    for c in changes:
+        print(f"\t{c['ResourceChange']['Action']:<40}  {c['ResourceChange']['ResourceType']:<25}")
+
+    res = input("Continue? [y/N] ")
+    if res != 'y':
+        cloudformation.delete_change_set(
+            StackName=stackName,
+            ChangeSetName='update')
+        sys.exit("Cancelling update")
+
+    # Execute the change set
+    res = cloudformation.execute_change_set(
+            StackName=stackName,
+            ChangeSetName='update')
+
+    waiter = cloudformation.get_waiter('stack_update_complete')
+    waiter.wait(StackName=stackName)
+
+
+
+
 
     
 
