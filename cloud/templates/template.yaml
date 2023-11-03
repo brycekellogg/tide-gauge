@@ -140,37 +140,39 @@ Resources:
   # A deployment is a way of tracking verions
   # of the API that is deployed to a stage.
   # Must have "DependsOn" for each method.
-  # RestDeployment:
-  #   Type: AWS::ApiGateway::Deployment
-  #   DependsOn:
-  #     - MethodPostData
-  #     - MethodPostConfig
-  #     - MethodPostLogin
-  #   Properties:
-  #     RestApiId: !Ref RestAPI
+  RestDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - MethodPostData
+      - MethodGetData
+      - MethodPostConfig
+      - MethodGetConfig
+      - MethodPostLogin
+    Properties:
+      RestApiId: !Ref RestAPI
 
   # A stage represents various versions of the
   # deployed API. We  only have a single
   # stage and don't really worry about this.
-  # RestStage:
-  #   Type: AWS::ApiGateway::Stage
-  #   Properties:
-  #     StageName: production
-  #     RestApiId: !Ref RestAPI
-  #     DeploymentId: !Ref RestDeployment
+  RestStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: production
+      RestApiId: !Ref RestAPI
+      DeploymentId: !Ref RestDeployment
 
   # Allows us to limit usage of the
   # API by setting the number of times
   # per time period an API key works.
-  # RestUsagePlan:
-  #   Type: AWS::ApiGateway::UsagePlan
-  #   Properties:
-  #     ApiStages:
-  #       - ApiId: !Ref RestAPI
-  #         Stage: !Ref RestStage
-  #     Quota: {Limit: 3000, Period: DAY}
-  #     Throttle: {BurstLimit: 10, RateLimit: 2}
-  #     UsagePlanName: !Ref AWS::StackName
+  RestUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref RestAPI
+          Stage: !Ref RestStage
+      Quota: {Limit: 3000, Period: DAY}
+      Throttle: {BurstLimit: 10, RateLimit: 2}
+      UsagePlanName: !Ref AWS::StackName
 
   # This represents the URL at /data for publishing
   # and querying all data from the database
@@ -239,7 +241,7 @@ Resources:
   #       method.request.querystring.timestamp_gte: false
       Integration:
         Type: AWS_PROXY
-        IntegrationHttpMethod: GET
+        IntegrationHttpMethod: POST
         Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
           - LambdaArn: !GetAtt LambdaFunction.Arn
@@ -277,7 +279,7 @@ Resources:
   #     RequestValidatorId: !Ref RequestValidator
       Integration:
         Type: AWS_PROXY
-        IntegrationHttpMethod: GET
+        IntegrationHttpMethod: POST
         Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
           - LambdaArn: !GetAtt LambdaFunction.Arn

@@ -10,7 +10,7 @@
 # Copyright: 2023 Bryce Kellogg
 # License: GPLv3
 #
-# 
+#
 import os
 import json
 import time
@@ -37,8 +37,6 @@ def process(event, context):
     body = event['body']
     queryStringParams = event['queryStringParameters']
 
-
-
     # We load the JSON directly with the assumption that
     # it has already been validated. If there is an error,
     # the Python exception should result in an internal
@@ -55,16 +53,16 @@ def process(event, context):
         # Get the two required things and
         # delete them to make processing easier
         deviceName = queryStringParams['name']
-        limit = queryStringParams['limit']
+        limit = int(queryStringParams['limit'])
         del queryStringParams['name']
         del queryStringParams['limit']
 
         # The only remaining supported query
         # parameter is the 'timestamp_*' param.
         timestampQuery = next(iter(queryStringParams))
-        timestamp = queryStringParams[timestampQuery]
+        timestamp = int(queryStringParams[timestampQuery])
 
-        # We use this to convert from query tring params to
+        # We use this to convert from query string params to
         # the operator used in the dynamodb query.
         _, op = timestampQuery.split('_')
         op = {'eq': '=', 'lt': '<', 'gt': '>', 'lte': '<=', 'gte': '>='}[op]
@@ -79,7 +77,7 @@ def process(event, context):
     #   data = [
     #       [1234, {aaemra=aksmd, askmdla=alksdl}],
     #   ]
-    #   
+    #
     #
     # }
     if url == '/data' and method == 'POST':
@@ -171,9 +169,6 @@ def postData(stackName, deviceName, dataList):
             ExpressionAttributeNames={'#devicename': 'devicename'},
             ExpressionAttributeValues={':devicename': {'S': deviceName}},
         )
-
-    pprint(res)
-
 
     # The structure of the JSON allows us to iterate over all
     # the metrics one by one and batch write all the new data.
